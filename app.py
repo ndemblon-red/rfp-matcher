@@ -218,29 +218,61 @@ def match_preview():
     return render_template("match_preview.html", filename=filename, text=text, word_count=word_count)
 
 
-@app.route("/match/keywords-preview")
-def match_keywords_preview():
-    from flask import session
-
-    keywords = session.get("rfp_keywords")
-    if not keywords:
-        flash("No keywords entered. Please describe what you're looking for.", "warning")
-        return redirect(url_for("match"))
-    return render_template("match_keywords_preview.html", keywords=keywords)
-
-
 @app.route("/match/analyze", methods=["POST"])
 def match_analyze():
     from flask import session
+    from analysis import extract_requirements, score_case_studies
+    from db import get_case_studies_for_scoring
 
     keywords = request.form.get("keywords", "").strip()
     if keywords:
-        session["rfp_keywords"] = keywords
-        return redirect(url_for("match_keywords_preview"))
+        rfp_text = keywords
+    else:
+        stem = session.get("rfp_stem")
+        if not stem:
+            flash("No RFP text found. Please upload a document or describe your need.", "warning")
+            return redirect(url_for("match"))
+        text_path = os.path.join(app.config["UPLOAD_FOLDER"], stem + ".txt")
+        if not os.path.exists(text_path):
+            flash("Extracted text not found. Please re-upload.", "error")
+            return redirect(url_for("match"))
+        with open(text_path, encoding="utf-8") as f:
+            rfp_text = f.read()
 
-    # File-based flow — implemented in Slice 5
-    flash("Analysis not yet implemented.", "warning")
-    return redirect(url_for("match"))
+    try:
+        requirements = extract_requirements(rfp_text)
+    except Exception as e:
+        app.logger.error("extract_requirements failed: %s", e, exc_info=True)
+        flash("Analysis failed. Please try again.", "error")
+        return redirect(url_for("match"))
+
+    if requirements.get("off_topic"):
+        reason = requirements.get("off_topic_reason", "Input does not appear to be a business problem or RFP.")
+        flash(f"Could not analyse: {reason}", "warning")
+        return redirect(url_for("match"))
+
+    case_studies = get_case_studies_for_scoring()
+    results = score_case_studies(requirements, case_studies)
+
+    if not results:
+        flash("No matching case studies found. Try a different description.", "warning")
+        return redirect(url_for("match"))
+
+    session["match_results"] = results
+    session["match_problem_type"] = requirements.get("problem_type", "")
+    return redirect(url_for("match_results"))
+
+
+@app.route("/match/results")
+def match_results():
+    from flask import session
+
+    results = session.get("match_results")
+    if not results:
+        flash("No results to show. Run an analysis first.", "warning")
+        return redirect(url_for("match"))
+    problem_type = session.get("match_problem_type", "")
+    return render_template("match_results.html", results=results, problem_type=problem_type)
 
 
 # ── Startup ────────────────────────────────────────────────────────────────────

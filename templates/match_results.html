@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Match Results{% endblock %}
+
+{% block extra_style %}
+.score-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+}
+.score-high  { background: var(--green-soft);  color: var(--green); }
+.score-mid   { background: var(--amber-soft);  color: var(--amber); }
+.score-low   { background: var(--bg-hover);    color: var(--text-muted); }
+.result-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin-top: 8px;
+}
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <a href="{{ url_for('match') }}" class="back-link">← New search</a>
+    <h1 class="page-title">Match Results</h1>
+    {% if problem_type %}
+    <p class="page-subtitle">{{ problem_type | capitalize }}</p>
+    {% else %}
+    <p class="page-subtitle">Top {{ results | length }} matching case studies</p>
+    {% endif %}
+</div>
+
+{% for result in results %}
+<div class="match-card">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+        <div>
+            <div class="match-rank">Match {{ loop.index }}</div>
+            <div style="font-size:15px;font-weight:700;margin-bottom:2px">
+                <a href="{{ url_for('library_detail', case_id=result.id) }}"
+                   style="color:var(--text)">{{ result.title }}</a>
+            </div>
+        </div>
+        <div style="flex-shrink:0">
+            {% if result.score >= 60 %}
+            <span class="score-badge score-high">{{ result.score }}%</span>
+            {% elif result.score >= 30 %}
+            <span class="score-badge score-mid">{{ result.score }}%</span>
+            {% else %}
+            <span class="score-badge score-low">{{ result.score }}%</span>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="result-meta">
+        {% if result.industry_full %}
+        <span class="badge badge-blue">{{ result.industry_full }}</span>
+        {% endif %}
+        {% if result.ai_type %}
+        <span class="badge badge-muted">{{ result.ai_type }}</span>
+        {% endif %}
+        {% if result.has_video %}
+        <span class="badge badge-green">Video</span>
+        {% endif %}
+    </div>
+
+    <div class="match-explanation">{{ result.explanation }}</div>
+</div>
+{% endfor %}
+
+<div style="margin-top:8px">
+    <a href="{{ url_for('match') }}" class="btn btn-secondary">← New search</a>
+</div>
+{% endblock %}
