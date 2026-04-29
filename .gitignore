@@ -1,0 +1,13 @@
+.env
+temp_casestudies.pptx
+rfp_matcher.db
+rfp_matcher_test.db
+uploads/
+logs/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+*.egg-info/
+dist/
+build/

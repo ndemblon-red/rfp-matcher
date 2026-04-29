@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block title %}Sync{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">Sync Case Studies</h1>
+    <p class="page-subtitle">Refresh the database from the live PPTX and Excel files on OneDrive.</p>
+</div>
+
+<div class="summary-strip">
+    <div class="summary-item">
+        <span class="summary-label">Case studies in DB</span>
+        <span class="summary-value accent">{{ count }}</span>
+    </div>
+    <div class="summary-divider"></div>
+    <div class="summary-item">
+        <span class="summary-label">Last run</span>
+        <span class="summary-value" style="font-size:14px;font-weight:600">
+            {% if last_sync %}{{ last_sync.ran_at[:16] }}{% else %}Never{% endif %}
+        </span>
+    </div>
+    {% if last_sync %}
+    <div class="summary-divider"></div>
+    <div class="summary-item">
+        <span class="summary-label">Added</span>
+        <span class="summary-value" style="font-size:14px">{{ last_sync.added }}</span>
+    </div>
+    <div class="summary-item">
+        <span class="summary-label">Updated</span>
+        <span class="summary-value" style="font-size:14px">{{ last_sync.updated }}</span>
+    </div>
+    <div class="summary-item">
+        <span class="summary-label">Skipped</span>
+        <span class="summary-value" style="font-size:14px">{{ last_sync.skipped }}</span>
+    </div>
+    {% endif %}
+</div>
+
+<div class="card" style="margin-bottom:20px">
+    <div style="font-size:13px;color:var(--text-muted);margin-bottom:16px;line-height:1.7">
+        Sync reads the live PPTX and Excel files from OneDrive, extracts case study data,
+        and updates the local database. Run this after adding a new case study to the PPTX
+        or editing metadata in the Excel.
+    </div>
+    <button class="btn btn-primary" id="syncBtn" onclick="runSync()">
+        ↻ Run Sync
+    </button>
+</div>
+
+<div id="syncResult" style="display:none"></div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function runSync() {
+    var btn = document.getElementById('syncBtn');
+    var result = document.getElementById('syncResult');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Syncing…';
+    result.style.display = 'none';
+
+    fetch('/sync/run', { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            btn.disabled = false;
+            btn.innerHTML = '↻ Run Sync';
+            if (data.error) {
+                result.innerHTML = '<div class="flash flash-error">' + data.error + '</div>';
+            } else {
+                var html = '<div class="stats-row">' +
+                    statCard(data.added,   'Added',   'green') +
+                    statCard(data.updated, 'Updated', 'blue') +
+                    statCard(data.skipped, 'Skipped', '') +
+                    '</div>';
+                if (data.warnings && data.warnings.length) {
+                    html += '<div class="card"><div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--amber);margin-bottom:12px">New entries — please verify in Excel</div>';
+                    html += '<p style="font-size:13px;color:var(--text-muted);margin-bottom:12px">These PPTX slides had no matching Excel row. Metadata was inferred by Claude. Please verify the client name and fill in any missing fields.</p>';
+                    html += '<div class="table-wrap"><table><thead><tr><th>Title</th><th>Inferred Client</th><th>Inferred Industry</th><th>Inferred AI Type</th></tr></thead><tbody>';
+                    data.warnings.forEach(function (w) {
+                        html += '<tr><td>' + e(w.title) + '</td><td>' + e(w.client) + '</td><td>' + e(w.industry_full) + '</td><td>' + e(w.ai_type) + '</td></tr>';
+                    });
+                    html += '</tbody></table></div></div>';
+                }
+                html += '<div class="flash flash-success" style="margin-top:16px">Sync complete — ' + data.total + ' case studies in database.</div>';
+                result.innerHTML = html;
+            }
+            result.style.display = '';
+        })
+        .catch(function (err) {
+            btn.disabled = false;
+            btn.innerHTML = '↻ Run Sync';
+            result.innerHTML = '<div class="flash flash-error">Sync failed: ' + err.message + '</div>';
+            result.style.display = '';
+        });
+}
+
+function statCard(val, label, color) {
+    return '<div class="stat-card"><div class="stat-label">' + label + '</div>' +
+           '<div class="stat-value ' + color + '">' + val + '</div></div>';
+}
+
+function e(s) { return (s || '—').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+</script>
+{% endblock %}
