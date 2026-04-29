@@ -2,17 +2,8 @@
 {% block title %}Match RFP{% endblock %}
 
 {% block extra_style %}
-.match-panels {
-    display: flex;
-    gap: 0;
-    align-items: stretch;
-    max-width: 860px;
-}
-.match-panel {
-    flex: 1;
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
+.input-panel {
+    max-width: 560px;
     padding: 28px 24px;
 }
 .panel-label {
@@ -23,26 +14,23 @@
     color: var(--text-dim);
     margin-bottom: 16px;
 }
-.or-divider {
+.or-row {
     display: flex;
-    flex-direction: column;
     align-items: center;
-    justify-content: center;
-    padding: 0 20px;
-    flex-shrink: 0;
+    gap: 10px;
+    margin: 18px 0;
 }
-.or-line {
+.or-row-line {
     flex: 1;
-    width: 1px;
+    height: 1px;
     background: var(--border);
 }
-.or-text {
+.or-row-text {
     font-size: 11px;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.08em;
     color: var(--text-dim);
-    padding: 10px 0;
 }
 .keywords-input {
     width: 100%;
@@ -55,18 +43,11 @@
     font-size: 13px;
     line-height: 1.6;
     resize: vertical;
-    min-height: 130px;
+    min-height: 110px;
     transition: border-color 0.15s;
-    margin-bottom: 16px;
 }
 .keywords-input:focus { outline: none; border-color: var(--accent); }
 .keywords-input::placeholder { color: var(--text-dim); }
-@media (max-width: 640px) {
-    .match-panels { flex-direction: column; }
-    .or-divider { flex-direction: row; padding: 14px 0; }
-    .or-line { flex: 1; width: auto; height: 1px; }
-    .or-text { padding: 0 12px; }
-}
 {% endblock %}
 
 {% block content %}
@@ -75,68 +56,69 @@
     <p class="page-subtitle">Upload an RFP document, or describe what you're looking for to find the best matching case studies.</p>
 </div>
 
-<div class="match-panels">
+<div class="card input-panel">
+    <div class="panel-label">Upload a document or describe your need</div>
+    <form method="POST" action="{{ url_for('match_upload') }}" enctype="multipart/form-data" id="matchForm">
 
-    <!-- Option 1: File upload -->
-    <div class="match-panel">
-        <div class="panel-label">Upload a document</div>
-        <form method="POST" action="{{ url_for('match_upload') }}" enctype="multipart/form-data" id="uploadForm">
-            <div class="upload-area" id="uploadArea" onclick="document.getElementById('fileInput').click()">
-                <div class="upload-icon">📄</div>
-                <div class="upload-label">Drop your RFP here or click to browse</div>
-                <div class="upload-hint">PDF or Word document · Max 25 MB</div>
-                <div id="fileName" style="margin-top:10px;font-size:13px;font-weight:700;color:var(--accent);display:none"></div>
-            </div>
-            <input type="file" id="fileInput" name="file" accept=".pdf,.docx" style="display:none">
-            <div style="margin-top:16px">
-                <button type="submit" class="btn btn-primary" id="uploadBtn" disabled>
-                    Extract Text →
-                </button>
-            </div>
-        </form>
-    </div>
+        <div class="upload-area" id="uploadArea" tabindex="0" role="button" aria-label="Upload RFP file"
+             onclick="document.getElementById('fileInput').click()">
+            <div class="upload-icon">📄</div>
+            <div class="upload-label">Drop your RFP here or click to browse</div>
+            <div class="upload-hint">PDF or Word document · Max 25 MB</div>
+            <div id="fileName" style="margin-top:10px;font-size:13px;font-weight:700;color:var(--accent);display:none"></div>
+        </div>
+        <input type="file" id="fileInput" name="file" accept=".pdf,.docx" style="display:none">
 
-    <!-- OR separator -->
-    <div class="or-divider">
-        <div class="or-line"></div>
-        <span class="or-text">or</span>
-        <div class="or-line"></div>
-    </div>
+        <div class="or-row">
+            <div class="or-row-line"></div>
+            <span class="or-row-text">or</span>
+            <div class="or-row-line"></div>
+        </div>
 
-    <!-- Option 2: Keywords / free text -->
-    <div class="match-panel">
-        <div class="panel-label">Describe your need</div>
-        <form method="POST" action="{{ url_for('match_analyze') }}" id="keywordsForm">
-            <textarea id="keywordsInput" name="keywords" class="keywords-input"
-                placeholder="e.g. AI strategy for a logistics company"></textarea>
-            <div>
-                <button type="submit" class="btn btn-primary" id="keywordsBtn" disabled>
-                    Find Matches →
-                </button>
-            </div>
-        </form>
-    </div>
+        <textarea id="keywordsInput" name="keywords" class="keywords-input"
+            placeholder="e.g. AI strategy for a logistics company in Southeast Asia"></textarea>
 
+        <div style="margin-top:16px">
+            <button type="submit" class="btn btn-primary" id="matchBtn" disabled>
+                Find Matches →
+            </button>
+        </div>
+
+    </form>
 </div>
 {% endblock %}
 
 {% block extra_js %}
 <script>
 (function () {
-    // ── File upload ──────────────────────────────────────────────────────────
-    var input = document.getElementById('fileInput');
-    var area  = document.getElementById('uploadArea');
-    var btn   = document.getElementById('uploadBtn');
-    var label = document.getElementById('fileName');
+    var form          = document.getElementById('matchForm');
+    var input         = document.getElementById('fileInput');
+    var area          = document.getElementById('uploadArea');
+    var label         = document.getElementById('fileName');
+    var kInput        = document.getElementById('keywordsInput');
+    var btn           = document.getElementById('matchBtn');
+    var uploadAction  = "{{ url_for('match_upload') }}";
+    var analyzeAction = "{{ url_for('match_analyze') }}";
 
+    function update() {
+        var hasFile = input.files.length > 0;
+        var hasText = kInput.value.trim().length >= 10;
+        btn.disabled = !(hasFile || hasText);
+        form.action = hasFile ? uploadAction : analyzeAction;
+    }
+
+    // ── File input ────────────────────────────────────────────────────────────
     input.addEventListener('change', function () {
         if (input.files.length) {
             label.textContent = input.files[0].name;
             label.style.display = '';
-            btn.disabled = false;
+        } else {
+            label.style.display = 'none';
         }
+        update();
     });
 
+    // ── Drag and drop ─────────────────────────────────────────────────────────
     area.addEventListener('dragover', function (e) { e.preventDefault(); area.classList.add('dragover'); });
     area.addEventListener('dragleave', function () { area.classList.remove('dragover'); });
     area.addEventListener('drop', function (e) {
@@ -154,17 +136,20 @@
             input.files = dt.files;
             label.textContent = file.name;
             label.style.display = '';
-            btn.disabled = false;
+            update();
         }
     });
 
-    // ── Keywords ─────────────────────────────────────────────────────────────
-    var kInput = document.getElementById('keywordsInput');
-    var kBtn   = document.getElementById('keywordsBtn');
-
-    kInput.addEventListener('input', function () {
-        kBtn.disabled = kInput.value.trim().length < 10;
+    // ── Keyboard access for upload area ───────────────────────────────────────
+    area.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            input.click();
+        }
     });
+
+    // ── Textarea ──────────────────────────────────────────────────────────────
+    kInput.addEventListener('input', update);
 }());
 </script>
 {% endblock %}
