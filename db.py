@@ -298,6 +298,21 @@ def get_last_sync():
         conn.close()
 
 
+def get_case_studies_for_scoring():
+    """Return all case studies with slide_content included, for use by the scoring function."""
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT id, title, industry_full, ai_type, has_video, slide_content
+            FROM case_studies
+            ORDER BY slide_num, title
+        """)
+        return [dict(row) for row in cur.fetchall()]
+    finally:
+        conn.close()
+
+
 def get_case_study_count():
     conn = get_conn()
     try:

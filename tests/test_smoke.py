@@ -1,4 +1,24 @@
 """Smoke tests: every route returns 200 or 302, never 500."""
+from unittest.mock import patch
+
+_MOCK_REQUIREMENTS = {
+    "off_topic": False,
+    "industry_signals": ["logistics"],
+    "problem_type": "fleet optimisation",
+    "capabilities_needed": ["machine learning"],
+    "keywords": ["logistics", "fleet"],
+}
+_MOCK_RESULTS = [
+    {
+        "id": 1,
+        "title": "Logistics Case Study",
+        "industry_full": "Logistics",
+        "ai_type": "Predictive Analytics",
+        "has_video": 0,
+        "score": 80.0,
+        "explanation": "Industry match (Logistics); matched keywords: logistics, fleet.",
+    }
+]
 
 
 def test_root_redirects_to_library(client):
@@ -36,21 +56,32 @@ def test_404_returns_error_page(client):
     assert b"not found" in resp.data.lower()
 
 
-def test_match_keywords_post_redirects_to_preview(client):
-    resp = client.post("/match/analyze", data={"keywords": "AI strategy for logistics"})
+def test_match_analyze_with_keywords_redirects_to_results(client):
+    with patch("analysis.extract_requirements", return_value=_MOCK_REQUIREMENTS), \
+         patch("analysis.score_case_studies", return_value=_MOCK_RESULTS):
+        resp = client.post("/match/analyze", data={"keywords": "AI strategy for a logistics company"})
     assert resp.status_code == 302
-    assert b"keywords-preview" in resp.data
+    assert b"/match/results" in resp.data
 
 
-def test_match_keywords_preview_loads_with_session(client):
+def test_match_analyze_off_topic_redirects_to_match(client):
+    off_topic = {"off_topic": True, "off_topic_reason": "This is not a business problem."}
+    with patch("analysis.extract_requirements", return_value=off_topic):
+        resp = client.post("/match/analyze", data={"keywords": "Tell me a joke"})
+    assert resp.status_code == 302
+    assert b"/match/results" not in resp.data
+
+
+def test_match_results_loads_with_session(client):
     with client.session_transaction() as sess:
-        sess["rfp_keywords"] = "AI strategy for a logistics company"
-    resp = client.get("/match/keywords-preview")
+        sess["match_results"] = _MOCK_RESULTS
+        sess["match_problem_type"] = "fleet optimisation"
+    resp = client.get("/match/results")
     assert resp.status_code == 200
-    assert b"AI strategy" in resp.data
+    assert b"Match Results" in resp.data
 
 
-def test_match_keywords_preview_redirects_without_session(client):
-    resp = client.get("/match/keywords-preview")
+def test_match_results_redirects_without_session(client):
+    resp = client.get("/match/results")
     assert resp.status_code == 302
     assert b"/match" in resp.data
