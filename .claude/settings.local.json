@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m pytest tests/test_sync.py -v)",
+      "Bash(python -m pytest tests/ -v)",
+      "Bash(python -m pytest tests/test_extraction.py -v)",
+      "Bash(python -m pytest tests/test_sync.py tests/test_db.py -v)",
+      "Bash(python -m pytest tests/test_sync.py tests/test_db.py -q)",
+      "Bash(python -m pytest tests/test_sync.py tests/test_db.py tests/test_extraction.py -v)",
+      "Bash(python -m pytest tests/ -q)",
+      "Bash(python -m pytest tests/test_sync.py -q)",
+      "Bash(python -m pytest tests/test_smoke.py -v)",
+      "Bash(python -m pytest -q)"
+    ]
+  }
+}

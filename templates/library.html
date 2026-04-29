@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+{% block title %}Library{% endblock %}
+
+{% block extra_style %}
+.th-sort { cursor: pointer; user-select: none; white-space: nowrap; }
+.th-sort::after { content: ' ↕'; opacity: 0.35; font-size: 9px; }
+.th-sort.asc::after  { content: ' ↑'; opacity: 1; }
+.th-sort.desc::after { content: ' ↓'; opacity: 1; }
+.video-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--green); }
+.search-input {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--bg-raised);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 13px;
+    margin-bottom: 12px;
+}
+.search-input:focus { outline: none; border-color: var(--accent); }
+.toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
+.toolbar select {
+    padding: 7px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--bg-raised);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.toolbar select:focus { outline: none; border-color: var(--accent); }
+.row-count { font-size: 11px; color: var(--text-dim); margin-left: auto; }
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">Case Study Library</h1>
+</div>
+
+<div class="summary-strip">
+    <div class="summary-item">
+        <span class="summary-label">Total</span>
+        <span class="summary-value accent">{{ count }}</span>
+    </div>
+    <div class="summary-divider"></div>
+    <div class="summary-item">
+        <span class="summary-label">Last sync</span>
+        <span class="summary-value" style="font-size:14px;font-weight:600">
+            {% if last_sync %}{{ last_sync.ran_at[:16] }}{% else %}Never{% endif %}
+        </span>
+    </div>
+    {% if last_sync %}
+    <div class="summary-divider"></div>
+    <div class="summary-item">
+        <span class="summary-label">Added</span>
+        <span class="summary-value" style="font-size:14px">{{ last_sync.added }}</span>
+    </div>
+    <div class="summary-item">
+        <span class="summary-label">Updated</span>
+        <span class="summary-value" style="font-size:14px">{{ last_sync.updated }}</span>
+    </div>
+    {% endif %}
+    <div style="margin-left:auto">
+        <a href="{{ url_for('sync') }}" class="btn btn-secondary btn-sm">↻ Sync now</a>
+    </div>
+</div>
+
+{% if case_studies %}
+    <input id="searchBox" class="search-input" type="search" placeholder="Search by project name, industry…" autocomplete="off">
+
+    <div class="toolbar">
+        <select id="filterIndustry">
+            <option value="">All industries</option>
+            {% for ind in industries %}
+                <option value="{{ ind }}">{{ ind }}</option>
+            {% endfor %}
+        </select>
+        <select id="filterAI">
+            <option value="">All AI types</option>
+            {% for ai in ai_types %}
+                <option value="{{ ai }}">{{ ai }}</option>
+            {% endfor %}
+        </select>
+        <span class="row-count" id="rowCount"></span>
+    </div>
+
+    <div class="table-wrap">
+        <table id="csTable">
+            <thead>
+                <tr>
+                    <th class="th-sort" data-col="0">Slide #</th>
+                    <th class="th-sort" data-col="1">Project Name</th>
+                    <th class="th-sort" data-col="2">Industry</th>
+                    <th class="th-sort" data-col="3">AI Type</th>
+                    <th class="th-sort" data-col="4">Video</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for cs in case_studies %}
+                <tr data-industry="{{ cs.industry_full or '' }}" data-ai="{{ cs.ai_type or '' }}">
+                    <td data-val="{{ cs.slide_num or 9999 }}">{{ cs.slide_num or '—' }}</td>
+                    <td><a href="{{ url_for('library_detail', case_id=cs.id) }}">{{ cs.title }}</a></td>
+                    <td>{{ cs.industry_full or '—' }}</td>
+                    <td>{{ cs.ai_type or '—' }}</td>
+                    <td>{% if cs.has_video %}<span class="video-dot" title="Has video version"></span>{% endif %}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <p id="noResults" style="display:none;text-align:center;padding:40px;color:var(--text-muted)">
+        No case studies match the current filters.
+    </p>
+
+{% else %}
+    <div class="empty-state">
+        <h3>No case studies yet</h3>
+        <p>Run a sync to populate the library from the PPTX file.</p>
+        <a href="{{ url_for('sync') }}" class="btn btn-primary">Go to Sync →</a>
+    </div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    var table   = document.getElementById('csTable');
+    if (!table) return;
+
+    var tbody   = table.querySelector('tbody');
+    var allRows = Array.from(tbody.querySelectorAll('tr'));
+    var headers = Array.from(table.querySelectorAll('th[data-col]'));
+    var search  = document.getElementById('searchBox');
+    var filterInd = document.getElementById('filterIndustry');
+    var filterAI  = document.getElementById('filterAI');
+    var rowCount  = document.getElementById('rowCount');
+    var noResults = document.getElementById('noResults');
+
+    var sortCol = -1, sortAsc = true;
+
+    function cellVal(row, col) {
+        var cell = row.cells[col];
+        return (cell.dataset.val !== undefined ? cell.dataset.val : cell.textContent).trim().toLowerCase();
+    }
+
+    function applySort() {
+        if (sortCol < 0) return;
+        var col = sortCol, asc = sortAsc;
+        allRows.sort(function (a, b) {
+            var va = cellVal(a, col), vb = cellVal(b, col);
+            var na = parseFloat(va), nb = parseFloat(vb);
+            if (!isNaN(na) && !isNaN(nb)) return asc ? na - nb : nb - na;
+            return asc ? va.localeCompare(vb) : vb.localeCompare(va);
+        });
+        allRows.forEach(function (r) { tbody.appendChild(r); });
+    }
+
+    function applyFilters() {
+        var q   = search.value.toLowerCase();
+        var ind = filterInd.value;
+        var ai  = filterAI.value;
+        var visible = 0;
+
+        allRows.forEach(function (row) {
+            var text = row.textContent.toLowerCase();
+            var show = (!q   || text.indexOf(q) >= 0)
+                    && (!ind || row.dataset.industry === ind)
+                    && (!ai  || row.dataset.ai === ai);
+            row.style.display = show ? '' : 'none';
+            if (show) visible++;
+        });
+
+        rowCount.textContent = visible + ' of ' + allRows.length;
+        noResults.style.display = visible === 0 ? '' : 'none';
+        table.style.display = visible === 0 ? 'none' : '';
+    }
+
+    headers.forEach(function (th) {
+        th.addEventListener('click', function () {
+            var col = parseInt(th.dataset.col, 10);
+            if (sortCol === col) { sortAsc = !sortAsc; }
+            else { sortCol = col; sortAsc = true; }
+            headers.forEach(function (h) { h.classList.remove('asc', 'desc'); });
+            th.classList.add(sortAsc ? 'asc' : 'desc');
+            applySort();
+            applyFilters();
+        });
+    });
+
+    search.addEventListener('input', applyFilters);
+    filterInd.addEventListener('change', applyFilters);
+    filterAI.addEventListener('change', applyFilters);
+
+    // Initial count
+    applyFilters();
+}());
+</script>
+{% endblock %}

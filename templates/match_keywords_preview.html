@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Keywords Preview{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <a href="{{ url_for('match') }}" class="back-link">← Change search</a>
+    <h1 class="page-title">Keywords Preview</h1>
+    <p class="page-subtitle">Review your search before running the analysis.</p>
+</div>
+
+<div class="card" style="margin-bottom:20px">
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-dim);margin-bottom:12px">
+        Your search
+    </div>
+    <div style="font-size:14px;color:var(--text);line-height:1.8;white-space:pre-wrap">{{ keywords }}</div>
+</div>
+
+<div class="card" style="max-width:480px">
+    <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px">
+        Ready to find matches? The AI will search the case study library for the best results.
+    </p>
+    <form method="POST" action="{{ url_for('match_analyze') }}">
+        <input type="hidden" name="keywords" value="{{ keywords }}">
+        <button type="submit" class="btn btn-primary">Find Matches →</button>
+    </form>
+</div>
+{% endblock %}

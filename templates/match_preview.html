@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}RFP Preview{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <a href="{{ url_for('match') }}" class="back-link">← Upload different file</a>
+    <h1 class="page-title">RFP Preview</h1>
+    <p class="page-subtitle">{{ filename }}</p>
+    <div class="page-actions">
+        <span class="badge badge-muted">{{ "{:,}".format(word_count) }} words</span>
+    </div>
+</div>
+
+<div class="card" style="margin-bottom:20px">
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-dim);margin-bottom:12px">
+        Extracted Text
+    </div>
+    <div id="textPreview" style="font-size:13px;color:var(--text-muted);line-height:1.8;white-space:pre-wrap;max-height:320px;overflow:hidden;position:relative">{{ text[:3000] }}{% if text|length > 3000 %}…{% endif %}</div>
+    {% if text|length > 3000 %}
+    <button id="toggleBtn" onclick="toggleText()" class="btn btn-secondary btn-sm" style="margin-top:12px">Show more</button>
+    {% endif %}
+</div>
+
+<div class="card" style="max-width:480px">
+    <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px">
+        Looking good? Run the AI analysis to find the best matching case studies from the library.
+    </p>
+    <form method="POST" action="{{ url_for('match_analyze') }}">
+        <button type="submit" class="btn btn-primary">Analyse RFP →</button>
+    </form>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{% if text|length > 3000 %}
+<script>
+var fullText = {{ text | tojson }};
+var expanded = false;
+function toggleText() {
+    var el  = document.getElementById('textPreview');
+    var btn = document.getElementById('toggleBtn');
+    if (expanded) {
+        el.textContent = fullText.slice(0, 3000) + '…';
+        el.style.maxHeight = '320px';
+        btn.textContent = 'Show more';
+    } else {
+        el.textContent = fullText;
+        el.style.maxHeight = 'none';
+        btn.textContent = 'Show less';
+    }
+    expanded = !expanded;
+}
+</script>
+{% endif %}
+{% endblock %}

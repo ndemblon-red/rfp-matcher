@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}{{ cs.title }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <a href="{{ url_for('library') }}" class="back-link">← Back to Library</a>
+    <h1 class="page-title">{{ cs.title }}</h1>
+    <p class="page-subtitle">{{ cs.client or 'Client unknown' }}</p>
+    <div class="page-actions">
+        {% if cs.industry_code %}
+            <span class="badge badge-blue" style="font-size:11px;padding:4px 10px">{{ cs.industry_code }} — {{ cs.industry_full or '' }}</span>
+        {% endif %}
+        {% if cs.ai_type and cs.ai_type != 'None' %}
+            <span class="badge badge-green" style="font-size:11px;padding:4px 10px">{{ cs.ai_type }}</span>
+        {% endif %}
+        {% if cs.offering %}
+            <span class="badge badge-muted" style="font-size:11px;padding:4px 10px">{{ cs.offering }}</span>
+        {% endif %}
+        {% if cs.needs_review %}
+            <span class="badge badge-amber" style="font-size:11px;padding:4px 10px">Needs review</span>
+        {% endif %}
+    </div>
+</div>
+
+{% if cs.slide_content %}
+<div class="card" style="margin-bottom:20px">
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-dim);margin-bottom:12px">
+        Case Study Content
+    </div>
+    <div style="font-size:13px;color:var(--text-muted);line-height:1.8;white-space:pre-wrap">{{ cs.slide_content }}</div>
+</div>
+{% else %}
+<div class="card" style="margin-bottom:20px">
+    <p style="color:var(--text-dim);font-size:13px">No slide content available. Re-sync to pull content from the PPTX.</p>
+</div>
+{% endif %}
+
+{% if cs.notes %}
+<div class="card" style="margin-bottom:20px">
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-dim);margin-bottom:8px">Notes</div>
+    <p style="font-size:13px;color:var(--text-muted)">{{ cs.notes }}</p>
+</div>
+{% endif %}
+
+<div style="font-size:11px;color:var(--text-dim);margin-top:8px">
+    Last synced: {{ cs.synced_at[:16] if cs.synced_at else '—' }}
+</div>
+{% endblock %}

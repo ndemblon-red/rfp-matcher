@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}RFP Matcher{% endblock %} — Catalyst</title>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300..800;1,9..40,300..800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        /* ── Theme tokens ── */
+        :root {
+            --bg: #F5F6FA;
+            --bg-raised: #FFFFFF;
+            --bg-card: #FFFFFF;
+            --bg-hover: #F0F1F7;
+            --border: #DFE1EA;
+            --border-light: #CACDD9;
+            --text: #0D0B3E;
+            --text-muted: #5A5775;
+            --text-dim: #8B8AA0;
+            --accent: #0066FF;
+            --accent-soft: rgba(0,102,255,0.08);
+            --green: #0FA87B;
+            --green-soft: rgba(15,168,123,0.10);
+            --amber: #D4870B;
+            --amber-soft: rgba(212,135,11,0.10);
+            --red: #D63B3B;
+            --red-soft: rgba(214,59,59,0.10);
+            --purple: #8B5CF6;
+            --font: 'DM Sans', system-ui, -apple-system, sans-serif;
+            --mono: 'JetBrains Mono', ui-monospace, monospace;
+            --radius: 12px;
+            --radius-sm: 8px;
+            --shadow: 0 2px 12px rgba(13,11,62,0.06);
+        }
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg: #0B0E14;
+                --bg-raised: #131720;
+                --bg-card: #181D28;
+                --bg-hover: #1E2433;
+                --border: #242B3A;
+                --border-light: #2A3244;
+                --text: #E4E8F1;
+                --text-muted: #8892A6;
+                --text-dim: #5C6578;
+                --accent: #4E8AFF;
+                --accent-soft: rgba(78,138,255,0.12);
+                --green: #34D399;
+                --green-soft: rgba(52,211,153,0.12);
+                --amber: #FBBF24;
+                --amber-soft: rgba(251,191,36,0.12);
+                --red: #F87171;
+                --red-soft: rgba(248,113,113,0.12);
+            }
+        }
+
+        /* ── Reset ── */
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: var(--font);
+            font-size: 14px;
+            line-height: 1.6;
+            color: var(--text);
+            background: var(--bg);
+            min-height: 100vh;
+        }
+        a { color: var(--accent); text-decoration: none; }
+        a:hover { text-decoration: underline; }
+
+        /* ── Navigation ── */
+        .nav {
+            background: var(--bg-raised);
+            border-bottom: 1px solid var(--border);
+            padding: 0 28px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            height: 56px;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: var(--shadow);
+        }
+        .nav-brand {
+            font-size: 15px;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+            color: var(--text);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .nav-brand .dot { color: var(--accent); font-size: 18px; }
+        .nav-brand .sub { font-weight: 400; color: var(--text-muted); }
+        .nav-links { display: flex; align-items: center; gap: 2px; }
+        .nav-link {
+            padding: 6px 14px;
+            border-radius: var(--radius-sm);
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-muted);
+            transition: all 0.15s;
+        }
+        .nav-link:hover { background: var(--bg-hover); color: var(--text); text-decoration: none; }
+        .nav-link.active { background: var(--accent-soft); color: var(--accent); }
+
+        /* ── Page layout ── */
+        .page { max-width: 1100px; margin: 0 auto; padding: 32px 24px; }
+        .page-header { margin-bottom: 28px; }
+        .back-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-muted);
+            margin-bottom: 12px;
+        }
+        .back-link:hover { color: var(--text); text-decoration: none; }
+        .page-title { font-size: 24px; font-weight: 800; letter-spacing: -0.03em; }
+        .page-subtitle { font-size: 14px; color: var(--text-muted); margin-top: 4px; }
+        .page-actions { display: flex; align-items: center; gap: 8px; margin-top: 16px; }
+
+        /* ── Cards ── */
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 20px;
+        }
+        .card-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 16px;
+        }
+        .card-title { font-size: 14px; font-weight: 700; margin-bottom: 4px; }
+        .card-subtitle { font-size: 12px; color: var(--text-muted); }
+        .card-body { margin-top: 12px; font-size: 13px; color: var(--text-muted); }
+        .card-footer { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+
+        /* ── Buttons ── */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 18px;
+            border-radius: var(--radius-sm);
+            font-size: 13px;
+            font-weight: 700;
+            font-family: var(--font);
+            cursor: pointer;
+            transition: all 0.15s;
+            border: none;
+            text-decoration: none;
+        }
+        .btn:hover { text-decoration: none; opacity: 0.9; }
+        .btn-primary { background: var(--accent); color: #fff; }
+        .btn-primary:hover { background: #0052cc; opacity: 1; }
+        .btn-secondary { background: var(--bg-hover); color: var(--text); border: 1px solid var(--border); }
+        .btn-secondary:hover { background: var(--border); opacity: 1; }
+        .btn-sm { padding: 5px 12px; font-size: 11px; }
+        .btn-danger { background: var(--red-soft); color: var(--red); border: 1px solid var(--red); }
+
+        /* ── Badges ── */
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 9px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .badge-blue  { background: var(--accent-soft); color: var(--accent); }
+        .badge-green { background: var(--green-soft);  color: var(--green); }
+        .badge-amber { background: var(--amber-soft);  color: var(--amber); }
+        .badge-red   { background: var(--red-soft);    color: var(--red); }
+        .badge-muted { background: var(--bg-hover);    color: var(--text-muted); }
+
+        /* ── Filter bar ── */
+        .filter-bar { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px; }
+        .filter-btn {
+            padding: 6px 14px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: var(--bg-raised);
+            color: var(--text-muted);
+            cursor: pointer;
+            font-family: var(--font);
+            transition: all 0.15s;
+        }
+        .filter-btn:hover { border-color: var(--border-light); color: var(--text); }
+        .filter-btn.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+
+        /* ── Summary strip ── */
+        .summary-strip {
+            background: var(--bg-raised);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 14px 20px;
+            display: flex;
+            align-items: center;
+            gap: 28px;
+            margin-bottom: 24px;
+            flex-wrap: wrap;
+        }
+        .summary-item { display: flex; flex-direction: column; gap: 1px; }
+        .summary-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-dim); }
+        .summary-value { font-size: 20px; font-weight: 800; color: var(--text); }
+        .summary-value.accent { color: var(--accent); }
+        .summary-divider { width: 1px; height: 36px; background: var(--border); }
+
+        /* ── Stats row ── */
+        .stats-row { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 24px; }
+        .stat-card {
+            flex: 1;
+            min-width: 120px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 16px 20px;
+        }
+        .stat-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-dim); }
+        .stat-value { font-size: 28px; font-weight: 800; margin-top: 2px; }
+        .stat-value.green { color: var(--green); }
+        .stat-value.amber { color: var(--amber); }
+        .stat-value.red   { color: var(--red); }
+        .stat-value.blue  { color: var(--accent); }
+
+        /* ── Table ── */
+        .table-wrap { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; }
+        th {
+            text-align: left;
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--text-dim);
+            padding: 8px 12px;
+            border-bottom: 1px solid var(--border);
+        }
+        td { padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 13px; }
+        tr:last-child td { border-bottom: none; }
+        tr:hover td { background: var(--bg-hover); }
+
+        /* ── Tabs ── */
+        .tabs { display: flex; border-bottom: 2px solid var(--border); margin-bottom: 20px; }
+        .tab {
+            padding: 10px 20px;
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--text-muted);
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -2px;
+            font-family: var(--font);
+        }
+        .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        /* ── Accordion ── */
+        .accordion-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            margin-bottom: 8px;
+            overflow: hidden;
+        }
+        .accordion-card.has-content { border-left: 3px solid var(--green); }
+        .accordion-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 16px;
+            cursor: pointer;
+        }
+        .accordion-body { border-top: 1px solid var(--border); padding: 16px; display: none; }
+
+        /* ── Flash messages ── */
+        .flash-list { list-style: none; margin-bottom: 20px; }
+        .flash {
+            padding: 12px 16px;
+            border-radius: var(--radius-sm);
+            font-size: 13px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+        .flash-error   { background: var(--red-soft);   color: var(--red);   border: 1px solid var(--red); }
+        .flash-success { background: var(--green-soft);  color: var(--green); border: 1px solid var(--green); }
+        .flash-warning { background: var(--amber-soft);  color: var(--amber); border: 1px solid var(--amber); }
+        .flash-info    { background: var(--accent-soft); color: var(--accent);border: 1px solid var(--accent); }
+
+        /* ── Spinner ── */
+        .spinner {
+            width: 20px; height: 20px;
+            border: 2px solid var(--border);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+            display: inline-block;
+            vertical-align: middle;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ── Upload area ── */
+        .upload-area {
+            border: 2px dashed var(--border);
+            border-radius: var(--radius);
+            padding: 48px 24px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .upload-area:hover, .upload-area.dragover {
+            border-color: var(--accent);
+            background: var(--accent-soft);
+        }
+        .upload-icon { font-size: 36px; margin-bottom: 12px; color: var(--text-dim); }
+        .upload-label { font-size: 15px; font-weight: 700; color: var(--text); margin-bottom: 4px; }
+        .upload-hint { font-size: 12px; color: var(--text-muted); }
+
+        /* ── Text preview ── */
+        .text-preview {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 14px;
+            font-family: var(--mono);
+            font-size: 12px;
+            color: var(--text-muted);
+            white-space: pre-wrap;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        /* ── Match card ── */
+        .match-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 20px;
+            margin-bottom: 16px;
+            border-left: 4px solid var(--accent);
+        }
+        .match-rank {
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--accent);
+            margin-bottom: 6px;
+        }
+        .match-explanation {
+            font-size: 13px;
+            color: var(--text-muted);
+            margin-top: 10px;
+            line-height: 1.7;
+        }
+
+        /* ── Empty state ── */
+        .empty-state {
+            text-align: center;
+            padding: 64px 20px;
+            color: var(--text-muted);
+        }
+        .empty-state h3 { font-size: 16px; font-weight: 700; margin-bottom: 8px; color: var(--text); }
+        .empty-state p { font-size: 13px; max-width: 360px; margin: 0 auto 20px; }
+
+        /* ── Divider ── */
+        hr { border: none; border-top: 1px solid var(--border); margin: 24px 0; }
+
+        {% block extra_style %}{% endblock %}
+    </style>
+</head>
+<body>
+
+<nav class="nav">
+    <a href="{{ url_for('index') }}" class="nav-brand" style="text-decoration:none">
+        <span class="dot">◆</span>
+        Catalyst <span class="sub">RFP Matcher</span>
+    </a>
+    <div class="nav-links">
+        <a href="{{ url_for('library') }}"
+           class="nav-link {% if request.endpoint in ('library', 'library_detail') %}active{% endif %}">
+            Library
+        </a>
+        <a href="{{ url_for('match') }}"
+           class="nav-link {% if request.endpoint in ('match', 'match_upload', 'match_analyze') %}active{% endif %}">
+            Match RFP
+        </a>
+        <a href="{{ url_for('sync') }}"
+           class="nav-link {% if request.endpoint == 'sync' %}active{% endif %}">
+            Sync
+        </a>
+    </div>
+</nav>
+
+<main class="page">
+    {% with messages = get_flashed_messages(with_categories=True) %}
+        {% if messages %}
+            <ul class="flash-list">
+                {% for category, message in messages %}
+                    <li class="flash flash-{{ category }}">{{ message }}</li>
+                {% endfor %}
+            </ul>
+        {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+</main>
+
+{% block extra_js %}{% endblock %}
+</body>
+</html>
