@@ -64,6 +64,46 @@ def _safe_parse_json(text, context="unknown"):
         raise ValueError(f"AI response was not valid JSON in {context}") from e
 
 
+# ── RFP brief generation ─────────────────────────────────────────────────────
+
+_SYSTEM_BRIEF = """You are an RFP analyst for a management consulting firm.
+Analyse the input — which may be a full RFP document or a short business description — and produce a structured brief.
+
+Respond with ONLY valid JSON. No markdown, no preamble:
+{
+  "objective": "One sentence stating the client's core goal or business problem.",
+  "challenges": ["2 to 4 short phrases — the key challenges or pain points driving this initiative"],
+  "capabilities_needed": ["3 to 6 short, specific capability tags, e.g. 'predictive analytics', 'process automation', 'change management', 'real-time monitoring'"],
+  "context": {
+    "industry": "Client industry or sector — empty string if not mentioned",
+    "scale": "Scale or scope of the engagement — empty string if not mentioned",
+    "constraints": "Notable constraints or requirements — empty string if not mentioned"
+  }
+}
+
+Rules:
+- capabilities_needed tags must be 1–3 words each, specific and scannable
+- If the input is very short, infer reasonable values from what is available
+- Always return valid JSON — never refuse or add explanation"""
+
+
+def generate_brief(rfp_text):
+    """Generate a structured brief from RFP text or a short problem description.
+
+    Returns {objective, challenges, capabilities_needed, context}.
+    Raises RuntimeError on API failure, ValueError if response is not valid JSON.
+    """
+    result = _call_claude(
+        system=_SYSTEM_BRIEF,
+        user=rfp_text[:8000],
+        max_tokens=600,
+        temperature=0.2,
+    )
+    if result["truncated"]:
+        logger.warning("generate_brief: response truncated — JSON may be incomplete")
+    return _safe_parse_json(result["text"], "generate_brief")
+
+
 # ── Section extraction ────────────────────────────────────────────────────────
 
 # Matches a section header and lazily captures everything up to the next header or end of string.
@@ -122,20 +162,24 @@ Critical rules:
 
 For each of the top 5 matches, write a 2–3 sentence explanation that reasons about WHY the business problem is similar — what specifically in the case study mirrors the client's challenge.
 
+If a "Capabilities needed" list is provided, also return matched_caps: the subset of those capability tags that are genuinely addressed by the case study, judged by meaning not exact wording. Return an empty array if none apply or no list was provided.
+
 Respond with ONLY a valid JSON array of exactly 5 items, sorted by score descending. No markdown, no preamble:
-[{"id": <integer>, "score": <integer 0–100>, "explanation": "<2–3 sentences>"}, ...]"""
+[{"id": <integer>, "score": <integer 0–100>, "explanation": "<2–3 sentences>", "matched_caps": [<string>, ...]}, ...]"""
 
 
-def match_case_studies(rfp_text, case_studies):
+def match_case_studies(rfp_text, case_studies, brief_capabilities=None):
     """Match RFP text against all case studies in a single Claude API call.
 
     Sends extracted Challenge/Approach/Results sections for each case study;
     falls back to raw slide content when no structured sections are found.
-    Returns up to 5 dicts: {id, title, industry_full, engagement_type, has_video, score, explanation}.
+    Returns up to 5 dicts: {id, title, industry_full, engagement_type, has_video, score, explanation, matched_caps}.
     Raises RuntimeError on API failure, ValueError if response is not valid JSON.
     """
     if not case_studies:
         return []
+
+    capabilities = brief_capabilities or []
 
     cs_payload = []
     for cs in case_studies:
@@ -149,10 +193,11 @@ def match_case_studies(rfp_text, case_studies):
                 entry["content"] = raw
         cs_payload.append(entry)
 
-    user_msg = (
-        f"Client RFP / Problem:\n{rfp_text}\n\n"
-        f"---\n\nCase Studies:\n{json.dumps(cs_payload, indent=2)}"
-    )
+    user_parts = [f"Client RFP / Problem:\n{rfp_text}"]
+    if capabilities:
+        user_parts.append(f"Capabilities needed:\n{json.dumps(capabilities)}")
+    user_parts.append(f"Case Studies:\n{json.dumps(cs_payload, indent=2)}")
+    user_msg = "\n\n---\n\n".join(user_parts)
 
     result = _call_claude(
         system=_SYSTEM_MATCH,
@@ -178,6 +223,7 @@ def match_case_studies(rfp_text, case_studies):
             "has_video": cs.get("has_video", 0),
             "score": item.get("score", 0),
             "explanation": item.get("explanation", ""),
+            "matched_caps": item.get("matched_caps") or [],
         })
 
     return results

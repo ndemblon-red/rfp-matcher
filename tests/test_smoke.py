@@ -13,6 +13,13 @@ _MOCK_RESULTS = [
     }
 ]
 
+_MOCK_BRIEF = {
+    "objective": "Reduce fleet delivery costs using ML routing.",
+    "challenges": ["High fuel costs", "Inefficient routing"],
+    "capabilities_needed": ["predictive analytics", "route optimisation"],
+    "context": {"industry": "Logistics", "scale": "500 vehicles", "constraints": ""},
+}
+
 
 def test_root_redirects_to_library(client):
     resp = client.get("/")
@@ -50,23 +57,37 @@ def test_404_returns_error_page(client):
 
 
 def test_match_analyze_with_keywords_redirects_to_results(client):
-    with patch("analysis.match_case_studies", return_value=_MOCK_RESULTS):
+    with patch("analysis.match_case_studies", return_value=_MOCK_RESULTS), \
+         patch("analysis.generate_brief", return_value=_MOCK_BRIEF):
         resp = client.post("/match/analyze", data={"keywords": "AI strategy for a logistics company"})
     assert resp.status_code == 302
     assert b"/match/results" in resp.data
 
 
 def test_match_analyze_empty_results_redirects_to_match(client):
-    with patch("analysis.match_case_studies", return_value=[]):
+    with patch("analysis.match_case_studies", return_value=[]), \
+         patch("analysis.generate_brief", return_value=_MOCK_BRIEF):
         resp = client.post("/match/analyze", data={"keywords": "AI strategy for a logistics company"})
     assert resp.status_code == 302
     assert b"/match/results" not in resp.data
+
+
+def test_match_preview_loads_with_session(client):
+    with client.session_transaction() as sess:
+        sess["rfp_stem"] = "test_rfp"
+        sess["rfp_filename"] = "test.pdf"
+        sess["rfp_word_count"] = 1200
+        sess["match_brief"] = _MOCK_BRIEF
+    resp = client.get("/match/preview")
+    assert resp.status_code == 200
+    assert b"RFP Brief" in resp.data
 
 
 def test_match_results_loads_with_session(client):
     with client.session_transaction() as sess:
         sess["match_results"] = _MOCK_RESULTS
         sess["match_problem_type"] = "fleet optimisation"
+        sess["match_brief"] = _MOCK_BRIEF
     resp = client.get("/match/results")
     assert resp.status_code == 200
     assert b"Match Results" in resp.data

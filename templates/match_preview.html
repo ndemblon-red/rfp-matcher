@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}RFP Preview{% endblock %}
+{% block title %}RFP Brief{% endblock %}
 
 {% block extra_style %}
 .spinner-btn {
@@ -11,31 +11,79 @@
     display: inline-block;
     flex-shrink: 0;
 }
+.cap-pill {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 600;
+    background: var(--accent-soft, #eef2ff);
+    color: var(--accent);
+    border: 1px solid var(--accent-border, #c7d2fe);
+}
 {% endblock %}
 
 {% block content %}
 <div class="page-header">
     <a href="{{ url_for('match') }}" class="back-link">← Upload different file</a>
-    <h1 class="page-title">RFP Preview</h1>
+    <h1 class="page-title">RFP Brief</h1>
     <p class="page-subtitle">{{ filename }}</p>
     <div class="page-actions">
         <span class="badge badge-muted">{{ "{:,}".format(word_count) }} words</span>
     </div>
 </div>
 
-<div class="card" style="margin-bottom:20px">
-    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-dim);margin-bottom:12px">
-        Extracted Text
-    </div>
-    <div id="textPreview" style="font-size:13px;color:var(--text-muted);line-height:1.8;white-space:pre-wrap;max-height:320px;overflow:hidden;position:relative">{{ text[:3000] }}{% if text|length > 3000 %}…{% endif %}</div>
-    {% if text|length > 3000 %}
-    <button id="toggleBtn" onclick="toggleText()" class="btn btn-secondary btn-sm" style="margin-top:12px">Show more</button>
-    {% endif %}
+{% if brief %}
+<div class="card" style="margin-bottom:16px">
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-dim);margin-bottom:10px">Objective</div>
+    <p style="font-size:14px;line-height:1.6;margin:0">{{ brief.objective }}</p>
 </div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+    <div class="card">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-dim);margin-bottom:10px">Key Challenges</div>
+        <ul style="margin:0;padding-left:16px;font-size:13px;color:var(--text-muted);line-height:1.9">
+            {% for challenge in brief.challenges %}
+            <li>{{ challenge }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+    <div class="card">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-dim);margin-bottom:10px">Capabilities Needed</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">
+            {% for cap in brief.capabilities_needed %}
+            <span class="cap-pill">{{ cap }}</span>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+{% if brief.context.industry or brief.context.scale or brief.context.constraints %}
+<div class="card" style="margin-bottom:16px">
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-dim);margin-bottom:10px">Context</div>
+    <div style="display:flex;flex-wrap:wrap;gap:20px;font-size:13px;color:var(--text-muted)">
+        {% if brief.context.industry %}
+        <div><span style="color:var(--text-dim);font-weight:600">Industry:</span> {{ brief.context.industry }}</div>
+        {% endif %}
+        {% if brief.context.scale %}
+        <div><span style="color:var(--text-dim);font-weight:600">Scale:</span> {{ brief.context.scale }}</div>
+        {% endif %}
+        {% if brief.context.constraints %}
+        <div><span style="color:var(--text-dim);font-weight:600">Constraints:</span> {{ brief.context.constraints }}</div>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
+{% else %}
+<div class="flash flash-warning" style="margin-bottom:16px">
+    Could not generate a structured brief. You can still run the analysis.
+</div>
+{% endif %}
 
 <div class="card" style="max-width:480px">
     <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px">
-        Looking good? Run the AI analysis to find the best matching case studies from the library.
+        Run the AI analysis to find the best matching case studies from the library.
     </p>
     <form method="POST" action="{{ url_for('match_analyze') }}">
         <button type="submit" class="btn btn-primary">Analyse RFP →</button>
@@ -57,24 +105,4 @@
     });
 }());
 </script>
-{% if text|length > 3000 %}
-<script>
-var fullText = {{ text | tojson }};
-var expanded = false;
-function toggleText() {
-    var el  = document.getElementById('textPreview');
-    var btn = document.getElementById('toggleBtn');
-    if (expanded) {
-        el.textContent = fullText.slice(0, 3000) + '…';
-        el.style.maxHeight = '320px';
-        btn.textContent = 'Show more';
-    } else {
-        el.textContent = fullText;
-        el.style.maxHeight = 'none';
-        btn.textContent = 'Show less';
-    }
-    expanded = !expanded;
-}
-</script>
-{% endif %}
 {% endblock %}

@@ -1,4 +1,5 @@
-"""Tests for analysis.py — _extract_sections and match_case_studies."""
+"""Tests for analysis.py — generate_brief, _extract_sections, match_case_studies."""
+import json
 from unittest.mock import patch
 
 
@@ -33,8 +34,8 @@ SAMPLE_CASE_STUDIES = [
 
 _MOCK_CLAUDE_RESPONSE = {
     "text": (
-        '[{"id": 1, "score": 85, "explanation": "Strong match on cost optimisation."}, '
-        '{"id": 2, "score": 42, "explanation": "Partial match on AI approach."}]'
+        '[{"id": 1, "score": 85, "explanation": "Strong match on cost optimisation.", "matched_caps": ["predictive analytics"]}, '
+        '{"id": 2, "score": 42, "explanation": "Partial match on AI approach.", "matched_caps": []}]'
     ),
     "input_tokens": 500,
     "output_tokens": 100,
@@ -127,8 +128,70 @@ def test_match_case_studies_result_has_required_keys():
         from analysis import match_case_studies
         results = match_case_studies("We need to optimise routes.", SAMPLE_CASE_STUDIES)
     for r in results:
-        for key in ("id", "title", "industry_full", "engagement_type", "has_video", "score", "explanation"):
+        for key in ("id", "title", "industry_full", "engagement_type", "has_video", "score", "explanation", "matched_caps"):
             assert key in r
+
+
+def test_match_case_studies_matched_caps_from_claude_response():
+    with patch("analysis._call_claude", return_value=_MOCK_CLAUDE_RESPONSE):
+        from analysis import match_case_studies
+        results = match_case_studies(
+            "We need to optimise routes.",
+            SAMPLE_CASE_STUDIES,
+            brief_capabilities=["predictive analytics", "cost reduction"],
+        )
+    first = next(r for r in results if r["id"] == 1)
+    assert first["matched_caps"] == ["predictive analytics"]
+
+
+def test_match_case_studies_matched_caps_defaults_to_empty_list():
+    mock_no_caps = {
+        "text": (
+            '[{"id": 1, "score": 85, "explanation": "Strong match.", "matched_caps": []}, '
+            '{"id": 2, "score": 42, "explanation": "Partial match.", "matched_caps": []}]'
+        ),
+        "input_tokens": 500,
+        "output_tokens": 80,
+        "truncated": False,
+    }
+    with patch("analysis._call_claude", return_value=mock_no_caps):
+        from analysis import match_case_studies
+        results = match_case_studies("We need to optimise routes.", SAMPLE_CASE_STUDIES)
+    for r in results:
+        assert r["matched_caps"] == []
+
+
+def test_match_case_studies_capabilities_in_user_message_when_provided():
+    captured = {}
+
+    def capture(system, user, **kwargs):
+        captured["user"] = user
+        return _MOCK_CLAUDE_RESPONSE
+
+    with patch("analysis._call_claude", side_effect=capture):
+        from analysis import match_case_studies
+        match_case_studies(
+            "rfp text",
+            SAMPLE_CASE_STUDIES,
+            brief_capabilities=["predictive analytics", "route optimisation"],
+        )
+
+    assert "Capabilities needed" in captured["user"]
+    assert "predictive analytics" in captured["user"]
+
+
+def test_match_case_studies_no_capabilities_section_when_empty():
+    captured = {}
+
+    def capture(system, user, **kwargs):
+        captured["user"] = user
+        return _MOCK_CLAUDE_RESPONSE
+
+    with patch("analysis._call_claude", side_effect=capture):
+        from analysis import match_case_studies
+        match_case_studies("rfp text", SAMPLE_CASE_STUDIES)
+
+    assert "Capabilities needed" not in captured["user"]
 
 
 def test_match_case_studies_merges_library_metadata():
@@ -188,3 +251,48 @@ def test_match_case_studies_fallback_to_raw_when_no_sections():
     assert results[0]["id"] == 3
     assert '"content"' in captured["user"]
     assert "slide_content" not in captured["user"]
+
+
+# ── generate_brief ────────────────────────────────────────────────────────────
+
+_MOCK_BRIEF_RESPONSE = {
+    "text": json.dumps({
+        "objective": "Reduce fleet delivery costs using ML-based routing.",
+        "challenges": ["High fuel costs", "Inefficient routing"],
+        "capabilities_needed": ["predictive analytics", "route optimisation", "change management"],
+        "context": {
+            "industry": "Logistics",
+            "scale": "500 vehicles",
+            "constraints": "Must integrate with existing TMS",
+        },
+    }),
+    "input_tokens": 400,
+    "output_tokens": 80,
+    "truncated": False,
+}
+
+
+def test_generate_brief_returns_required_keys():
+    with patch("analysis._call_claude", return_value=_MOCK_BRIEF_RESPONSE):
+        from analysis import generate_brief
+        brief = generate_brief("We need to optimise routes.")
+    for key in ("objective", "challenges", "capabilities_needed", "context"):
+        assert key in brief
+
+
+def test_generate_brief_context_has_required_fields():
+    with patch("analysis._call_claude", return_value=_MOCK_BRIEF_RESPONSE):
+        from analysis import generate_brief
+        brief = generate_brief("We need to optimise routes.")
+    for field in ("industry", "scale", "constraints"):
+        assert field in brief["context"]
+
+
+def test_generate_brief_capabilities_is_list():
+    with patch("analysis._call_claude", return_value=_MOCK_BRIEF_RESPONSE):
+        from analysis import generate_brief
+        brief = generate_brief("We need to optimise routes.")
+    assert isinstance(brief["capabilities_needed"], list)
+    assert len(brief["capabilities_needed"]) >= 1
+
+
