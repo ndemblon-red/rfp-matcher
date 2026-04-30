@@ -10,8 +10,8 @@
         {% if cs.industry_code %}
             <span class="badge badge-blue" style="font-size:11px;padding:4px 10px">{{ cs.industry_code }} — {{ cs.industry_full or '' }}</span>
         {% endif %}
-        {% if cs.ai_type and cs.ai_type != 'None' %}
-            <span class="badge badge-green" style="font-size:11px;padding:4px 10px">{{ cs.ai_type }}</span>
+        {% if cs.engagement_type and cs.engagement_type != 'None' %}
+            <span class="badge badge-green" style="font-size:11px;padding:4px 10px">{{ cs.engagement_type }}</span>
         {% endif %}
         {% if cs.offering %}
             <span class="badge badge-muted" style="font-size:11px;padding:4px 10px">{{ cs.offering }}</span>

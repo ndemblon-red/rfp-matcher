@@ -9,7 +9,7 @@ def test_upsert_and_read(setup_db):
         title="Test Project Alpha",
         slide_num=5,
         industry_full="Financial Services",
-        ai_type="Generative AI",
+        engagement_type="Generative AI",
         slide_content="Challenge: cost reduction. Result: 20% savings.",
         challenge=None,
         approach=None,
@@ -24,14 +24,14 @@ def test_upsert_updates_existing(setup_db):
         title="Test Project Alpha",
         slide_num=5,
         industry_full="Financial Services",
-        ai_type="Machine Learning",   # changed
+        engagement_type="Machine Learning",   # changed
         slide_content="Updated content.",
         challenge=None,
         approach=None,
         results=None,
     )
     match = next(cs for cs in get_all_case_studies() if cs["title"] == "Test Project Alpha")
-    assert match["ai_type"] == "Machine Learning"
+    assert match["engagement_type"] == "Machine Learning"
 
 
 def test_upsert_stores_slide_num(setup_db):
@@ -39,7 +39,7 @@ def test_upsert_stores_slide_num(setup_db):
         title="Slide Num Check Project",
         slide_num=42,
         industry_full="Financial Services",
-        ai_type="Generative AI",
+        engagement_type="Generative AI",
         slide_content="content",
         challenge=None,
         approach=None,
@@ -54,7 +54,7 @@ def test_upsert_allows_duplicate_titles(setup_db):
         title="SHARED NAME",
         slide_num=201,
         industry_full=None,
-        ai_type=None,
+        engagement_type=None,
         slide_content="first",
         challenge=None,
         approach=None,
@@ -64,7 +64,7 @@ def test_upsert_allows_duplicate_titles(setup_db):
         title="SHARED NAME",
         slide_num=202,
         industry_full=None,
-        ai_type=None,
+        engagement_type=None,
         slide_content="second",
         challenge=None,
         approach=None,
@@ -79,7 +79,7 @@ def test_upsert_sets_has_video(setup_db):
         title="Video Project",
         slide_num=10,
         industry_full=None,
-        ai_type=None,
+        engagement_type=None,
         slide_content="content",
         challenge=None,
         approach=None,
@@ -104,7 +104,7 @@ def test_content_hash_stored_and_found(setup_db):
         title="Hash Test Project",
         slide_num=99,
         industry_full=None,
-        ai_type=None,
+        engagement_type=None,
         slide_content="content",
         challenge=None,
         approach=None,
@@ -131,7 +131,7 @@ def test_get_case_study_by_hash_found(setup_db):
         title="Hash Lookup Project",
         slide_num=301,
         industry_full=None,
-        ai_type=None,
+        engagement_type=None,
         slide_content="content",
         challenge=None,
         approach=None,
@@ -154,7 +154,7 @@ def test_update_slide_num(setup_db):
         title="Slide Move Project",
         slide_num=401,
         industry_full=None,
-        ai_type=None,
+        engagement_type=None,
         slide_content="content",
         challenge=None,
         approach=None,

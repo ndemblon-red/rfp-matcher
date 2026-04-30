@@ -79,9 +79,9 @@
             {% endfor %}
         </select>
         <select id="filterAI">
-            <option value="">All AI types</option>
-            {% for ai in ai_types %}
-                <option value="{{ ai }}">{{ ai }}</option>
+            <option value="">All engagement types</option>
+            {% for et in engagement_types %}
+                <option value="{{ et }}">{{ et }}</option>
             {% endfor %}
         </select>
         <span class="row-count" id="rowCount"></span>
@@ -94,17 +94,17 @@
                     <th class="th-sort" data-col="0">Slide #</th>
                     <th class="th-sort" data-col="1">Project Name</th>
                     <th class="th-sort" data-col="2">Industry</th>
-                    <th class="th-sort" data-col="3">AI Type</th>
+                    <th class="th-sort" data-col="3">Engagement Type</th>
                     <th class="th-sort" data-col="4">Video</th>
                 </tr>
             </thead>
             <tbody>
                 {% for cs in case_studies %}
-                <tr data-industry="{{ cs.industry_full or '' }}" data-ai="{{ cs.ai_type or '' }}">
+                <tr data-industry="{{ cs.industry_full or '' }}" data-ai="{{ cs.engagement_type or '' }}">
                     <td data-val="{{ cs.slide_num or 9999 }}">{{ cs.slide_num or '—' }}</td>
                     <td><a href="{{ url_for('library_detail', case_id=cs.id) }}">{{ cs.title }}</a></td>
                     <td>{{ cs.industry_full or '—' }}</td>
-                    <td>{{ cs.ai_type or '—' }}</td>
+                    <td>{{ cs.engagement_type or '—' }}</td>
                     <td>{% if cs.has_video %}<span class="video-dot" title="Has video version"></span>{% endif %}</td>
                 </tr>
                 {% endfor %}

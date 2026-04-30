@@ -1,4 +1,6 @@
 """Sync: read PPTX slides between section dividers, infer metadata locally, upsert to database."""
+import anthropic
+import functools
 import hashlib
 import logging
 import os
@@ -134,41 +136,56 @@ _INDUSTRY_KEYWORDS = [
     ("internal",              "Professional Services"),
 ]
 
-_AI_TYPE_KEYWORDS = [
-    # Multi-word phrases first
-    ("computer vision",   "Computer Vision"),
-    ("image recognition", "Computer Vision"),
-    ("machine learning",  "Machine Learning"),
-    ("ml model",          "Machine Learning"),
-    ("natural language",  "NLP"),
-    ("text analysis",     "NLP"),
-    ("data platform",     "Data & Analytics"),
-    ("platform build",    "Software & Platform"),
-    ("operating model",   "Strategy"),
+_ENGAGEMENT_TYPE_KEYWORDS = [
+    # Multi-word phrases first (longest / most specific first)
+    ("computer vision",       "Computer Vision"),
+    ("image recognition",     "Computer Vision"),
+    ("machine learning",      "Machine Learning"),
+    ("ml model",              "Machine Learning"),
+    ("natural language",      "NLP"),
+    ("text analysis",         "NLP"),
+    ("document processing",   "NLP"),
+    ("data platform",         "Data & Analytics"),
+    ("platform build",        "Software & Platform"),
+    ("system integration",    "Software & Platform"),
+    ("ai strategy",           "AI Strategy"),
+    ("ai roadmap",            "AI Strategy"),
+    ("ai maturity",           "AI Strategy"),
+    ("ai factory",            "AI Strategy"),
+    ("use case",              "AI Strategy"),
+    ("digital transformation","Digital Strategy"),
+    ("operating model",       "Digital Strategy"),
+    ("it strategy",           "Digital Strategy"),
+    ("it architecture",       "Digital Strategy"),
+    ("technology strategy",   "Digital Strategy"),
+    ("security audit",        "Cybersecurity"),
     # Single words / abbreviations
-    ("generative",        "Generative AI"),
-    ("genai",             "Generative AI"),
-    ("copilot",           "Generative AI"),
-    ("llm",               "Generative AI"),
-    ("gpt",               "Generative AI"),
-    ("rag",               "Generative AI"),
-    ("forecasting",       "Machine Learning"),
-    ("prediction",        "Machine Learning"),
-    ("classification",    "Machine Learning"),
-    ("sentiment",         "NLP"),
-    ("nlp",               "NLP"),
-    ("dashboard",         "Data & Analytics"),
-    ("analytics",         "Data & Analytics"),
-    ("devops",            "Software & Platform"),
-    ("software",          "Software & Platform"),
-    ("migration",         "Software & Platform"),
-    ("portal",            "Software & Platform"),
-    ("roadmap",           "Strategy"),
-    ("maturity",          "Strategy"),
-    ("strategy",          "Strategy"),
+    ("generative",            "Generative AI"),
+    ("genai",                 "Generative AI"),
+    ("copilot",               "Generative AI"),
+    ("llm",                   "Generative AI"),
+    ("gpt",                   "Generative AI"),
+    ("rag",                   "Generative AI"),
+    ("agent",                 "Generative AI"),
+    ("forecasting",           "Machine Learning"),
+    ("prediction",            "Machine Learning"),
+    ("classification",        "Machine Learning"),
+    ("sentiment",             "NLP"),
+    ("nlp",                   "NLP"),
+    ("dashboard",             "Data & Analytics"),
+    ("analytics",             "Data & Analytics"),
+    ("reporting",             "Data & Analytics"),
+    ("portal",                "Software & Platform"),
+    ("devops",                "Software & Platform"),
+    ("software",              "Software & Platform"),
+    ("migration",             "Software & Platform"),
+    ("cybersecurity",         "Cybersecurity"),
+    ("vulnerability",         "Cybersecurity"),
+    ("penetration",           "Cybersecurity"),
+    ("cyber",                 "Cybersecurity"),
     # Short tokens last — word-boundary matched to avoid false positives
-    ("bi",                "Data & Analytics"),
-    ("app",               "Software & Platform"),
+    ("bi",                    "Data & Analytics"),
+    ("app",                   "Software & Platform"),
 ]
 
 
@@ -191,16 +208,66 @@ def _infer_industry(title, slide_text):
     return _match_keywords(slide_text, _INDUSTRY_KEYWORDS)
 
 
-def _infer_ai_type(slide_text):
-    """Scan slide text for AI type keywords."""
-    return _match_keywords(slide_text, _AI_TYPE_KEYWORDS)
+def _infer_engagement_type(slide_text):
+    """Scan slide text for engagement type keywords."""
+    return _match_keywords(slide_text, _ENGAGEMENT_TYPE_KEYWORDS)
+
+
+# ── Claude fallback for engagement type ───────────────────────────────────────
+
+_VALID_ENGAGEMENT_TYPES = frozenset({
+    "Generative AI", "Machine Learning", "Computer Vision", "NLP",
+    "Data & Analytics", "Software & Platform", "AI Strategy",
+    "Digital Strategy", "Cybersecurity",
+})
+
+_SYSTEM_CLASSIFY = (
+    "You are classifying a management consulting case study by engagement type.\n"
+    "Reply with exactly one of these labels and nothing else:\n"
+    "Generative AI | Machine Learning | Computer Vision | NLP | "
+    "Data & Analytics | Software & Platform | AI Strategy | Digital Strategy | Cybersecurity"
+)
+
+_anthropic_client = None
+
+
+def _get_anthropic_client():
+    global _anthropic_client
+    if _anthropic_client is None:
+        _anthropic_client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+    return _anthropic_client
+
+
+@functools.lru_cache(maxsize=512)
+def _classify_via_claude(title, content_snippet):
+    """Classify engagement type via Claude. Cached by (title, content_snippet)."""
+    try:
+        response = _get_anthropic_client().messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=20,
+            temperature=0.0,
+            system=_SYSTEM_CLASSIFY,
+            messages=[{"role": "user", "content": f"Title: {title}\n\nContent: {content_snippet}"}],
+        )
+        result = response.content[0].text.strip()
+        if result in _VALID_ENGAGEMENT_TYPES:
+            logger.info("Claude classified %r as %r", title, result)
+            return result
+        logger.warning("Claude returned unexpected engagement type %r for %r — ignoring", result, title)
+        return None
+    except Exception as e:
+        logger.warning("Claude engagement type classification failed for %r: %s", title, e)
+        return None
 
 
 def infer_metadata(title, slide_content):
-    """Infer industry_full and ai_type locally — no API calls."""
+    """Infer industry_full and engagement_type; falls back to Claude when keywords don't match."""
+    engagement_type = _infer_engagement_type(slide_content)
+    if engagement_type is None:
+        engagement_type = _classify_via_claude(title, slide_content[:300])
     return {
-        "industry_full": _infer_industry(title, slide_content),
-        "ai_type":       _infer_ai_type(slide_content),
+        "industry_full":   _infer_industry(title, slide_content),
+        "engagement_type": engagement_type,
     }
 
 
@@ -342,7 +409,7 @@ def run_sync():
             title=project_name,
             slide_num=slide["slide_num"],
             industry_full=meta.get("industry_full"),
-            ai_type=meta.get("ai_type"),
+            engagement_type=meta.get("engagement_type"),
             slide_content=slide["slide_content"],
             challenge=None,
             approach=None,

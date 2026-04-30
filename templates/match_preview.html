@@ -1,6 +1,18 @@
 {% extends "base.html" %}
 {% block title %}RFP Preview{% endblock %}
 
+{% block extra_style %}
+.spinner-btn {
+    width: 13px; height: 13px;
+    border: 2px solid rgba(255,255,255,0.35);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    display: inline-block;
+    flex-shrink: 0;
+}
+{% endblock %}
+
 {% block content %}
 <div class="page-header">
     <a href="{{ url_for('match') }}" class="back-link">← Upload different file</a>
@@ -32,6 +44,19 @@
 {% endblock %}
 
 {% block extra_js %}
+<script>
+(function () {
+    var form = document.querySelector('form[action$="/match/analyze"]');
+    var btn  = form.querySelector('button[type="submit"]');
+    var submitting = false;
+    form.addEventListener('submit', function (e) {
+        if (submitting) { e.preventDefault(); return; }
+        submitting = true;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-btn"></span> Analysing…';
+    });
+}());
+</script>
 {% if text|length > 3000 %}
 <script>
 var fullText = {{ text | tojson }};

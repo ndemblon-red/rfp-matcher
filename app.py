@@ -109,14 +109,14 @@ def library():
     from db import get_all_case_studies, get_distinct, get_last_sync, get_case_study_count
     case_studies = get_all_case_studies()
     industries = get_distinct("industry_full")
-    ai_types = get_distinct("ai_type")
+    engagement_types = get_distinct("engagement_type")
     last_sync = get_last_sync()
     count = get_case_study_count()
     return render_template(
         "library.html",
         case_studies=case_studies,
         industries=industries,
-        ai_types=ai_types,
+        engagement_types=engagement_types,
         last_sync=last_sync,
         count=count,
     )
@@ -221,7 +221,7 @@ def match_preview():
 @app.route("/match/analyze", methods=["POST"])
 def match_analyze():
     from flask import session
-    from analysis import extract_requirements, score_case_studies
+    from analysis import match_case_studies
     from db import get_case_studies_for_scoring
 
     keywords = request.form.get("keywords", "").strip()
@@ -239,27 +239,20 @@ def match_analyze():
         with open(text_path, encoding="utf-8") as f:
             rfp_text = f.read()
 
+    case_studies = get_case_studies_for_scoring()
+
     try:
-        requirements = extract_requirements(rfp_text)
+        results = match_case_studies(rfp_text, case_studies)
     except Exception as e:
-        app.logger.error("extract_requirements failed: %s", e, exc_info=True)
+        app.logger.error("match_case_studies failed: %s", e, exc_info=True)
         flash("Analysis failed. Please try again.", "error")
         return redirect(url_for("match"))
-
-    if requirements.get("off_topic"):
-        reason = requirements.get("off_topic_reason", "Input does not appear to be a business problem or RFP.")
-        flash(f"Could not analyse: {reason}", "warning")
-        return redirect(url_for("match"))
-
-    case_studies = get_case_studies_for_scoring()
-    results = score_case_studies(requirements, case_studies)
 
     if not results:
         flash("No matching case studies found. Try a different description.", "warning")
         return redirect(url_for("match"))
 
     session["match_results"] = results
-    session["match_problem_type"] = requirements.get("problem_type", "")
     return redirect(url_for("match_results"))
 
 

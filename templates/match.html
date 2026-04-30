@@ -48,6 +48,15 @@
 }
 .keywords-input:focus { outline: none; border-color: var(--accent); }
 .keywords-input::placeholder { color: var(--text-dim); }
+.spinner-btn {
+    width: 13px; height: 13px;
+    border: 2px solid rgba(255,255,255,0.35);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    display: inline-block;
+    flex-shrink: 0;
+}
 {% endblock %}
 
 {% block content %}
@@ -150,6 +159,16 @@
 
     // ── Textarea ──────────────────────────────────────────────────────────────
     kInput.addEventListener('input', update);
+
+    // ── Loading state on submit ───────────────────────────────────────────────
+    var submitting = false;
+    form.addEventListener('submit', function (e) {
+        if (submitting) { e.preventDefault(); return; }
+        submitting = true;
+        var label = input.files.length > 0 ? 'Extracting…' : 'Analysing…';
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-btn"></span> ' + label;
+    });
 }());
 </script>
 {% endblock %}

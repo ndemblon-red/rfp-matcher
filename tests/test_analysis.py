@@ -1,150 +1,190 @@
-"""Tests for analysis.py — extract_requirements and score_case_studies."""
+"""Tests for analysis.py — _extract_sections and match_case_studies."""
 from unittest.mock import patch
 
 
 # ── Shared test data ──────────────────────────────────────────────────────────
 
-SAMPLE_REQUIREMENTS = {
-    "off_topic": False,
-    "industry_signals": ["logistics", "supply chain"],
-    "problem_type": "route optimisation for a delivery fleet",
-    "capabilities_needed": ["predictive analytics", "machine learning"],
-    "keywords": ["logistics", "delivery", "route", "fleet", "efficiency", "cost"],
-}
-
 SAMPLE_CASE_STUDIES = [
     {
         "id": 1,
-        "title": "Logistics Route Optimisation",
-        "industry_full": "Logistics & Supply Chain",
-        "ai_type": "Predictive Analytics",
+        "title": "Route Optimisation",
+        "industry_full": "Logistics",
+        "engagement_type": "Machine Learning",
         "has_video": 0,
         "slide_content": (
-            "We helped a major logistics company optimise delivery routes using machine learning. "
-            "Reduced fleet costs by 20%. Improved efficiency across 500 delivery vehicles."
+            "Challenge: Reduce delivery costs across a large fleet.\n"
+            "Approach: ML routing model trained on historical trips.\n"
+            "Results: 20% cost reduction across 500 vehicles."
         ),
     },
     {
         "id": 2,
-        "title": "Healthcare AI Diagnosis",
+        "title": "AI Diagnosis",
         "industry_full": "Healthcare",
-        "ai_type": "Computer Vision",
+        "engagement_type": "Computer Vision",
         "has_video": 1,
-        "slide_content": "AI-powered diagnostic tool for radiology departments. Reduced diagnosis time by 40%.",
-    },
-    {
-        "id": 3,
-        "title": "Retail Demand Forecasting",
-        "industry_full": "Retail",
-        "ai_type": "Predictive Analytics",
-        "has_video": 0,
-        "slide_content": "Demand forecasting model for a leading retailer. Improved inventory management and reduced waste.",
+        "slide_content": (
+            "Challenge: Radiology backlog causing delays.\n"
+            "Approach: Computer vision model for image triage.\n"
+            "Results: 40% reduction in diagnosis time."
+        ),
     },
 ]
 
-
-# ── extract_requirements ──────────────────────────────────────────────────────
-
-def test_extract_requirements_returns_expected_keys():
-    mock_response = {
-        "text": (
-            '{"off_topic": false, "industry_signals": ["logistics"], '
-            '"problem_type": "fleet optimisation", '
-            '"capabilities_needed": ["machine learning"], '
-            '"keywords": ["route", "fleet", "delivery"]}'
-        ),
-        "input_tokens": 100,
-        "output_tokens": 50,
-        "truncated": False,
-    }
-    with patch("analysis._call_claude", return_value=mock_response):
-        from analysis import extract_requirements
-        result = extract_requirements("We need to optimise our delivery routes.")
-
-    assert result["off_topic"] is False
-    for key in ("industry_signals", "problem_type", "capabilities_needed", "keywords"):
-        assert key in result
-    assert isinstance(result["keywords"], list)
+_MOCK_CLAUDE_RESPONSE = {
+    "text": (
+        '[{"id": 1, "score": 85, "explanation": "Strong match on cost optimisation."}, '
+        '{"id": 2, "score": 42, "explanation": "Partial match on AI approach."}]'
+    ),
+    "input_tokens": 500,
+    "output_tokens": 100,
+    "truncated": False,
+}
 
 
-def test_extract_requirements_flags_off_topic():
-    mock_response = {
-        "text": '{"off_topic": true, "off_topic_reason": "Input is a joke, not a business problem."}',
-        "input_tokens": 50,
-        "output_tokens": 20,
-        "truncated": False,
-    }
-    with patch("analysis._call_claude", return_value=mock_response):
-        from analysis import extract_requirements
-        result = extract_requirements("Why did the chicken cross the road?")
+# ── _extract_sections ─────────────────────────────────────────────────────────
 
-    assert result["off_topic"] is True
-    assert "off_topic_reason" in result
+def test_extract_sections_colon_format():
+    from analysis import _extract_sections
+    content = "Challenge: Reduce costs.\nApproach: Use ML.\nResults: 20% savings."
+    s = _extract_sections(content)
+    assert s["challenge"] == "Reduce costs."
+    assert s["approach"] == "Use ML."
+    assert s["results"] == "20% savings."
 
 
-def test_extract_requirements_handles_markdown_fences():
-    mock_response = {
-        "text": (
-            '```json\n{"off_topic": false, "industry_signals": [], '
-            '"problem_type": "test", "capabilities_needed": [], "keywords": []}\n```'
-        ),
-        "input_tokens": 50,
-        "output_tokens": 30,
-        "truncated": False,
-    }
-    with patch("analysis._call_claude", return_value=mock_response):
-        from analysis import extract_requirements
-        result = extract_requirements("We need a digital transformation strategy.")
-
-    assert result["off_topic"] is False
+def test_extract_sections_newline_format():
+    from analysis import _extract_sections
+    content = "Challenge\nReduce costs.\n\nApproach\nUse ML.\n\nResults\n20% savings."
+    s = _extract_sections(content)
+    assert "challenge" in s
+    assert "approach" in s
+    assert "results" in s
 
 
-# ── score_case_studies ────────────────────────────────────────────────────────
+def test_extract_sections_missing_section():
+    from analysis import _extract_sections
+    s = _extract_sections("Challenge: Hard problem.\nApproach: Good method.")
+    assert "challenge" in s
+    assert "approach" in s
+    assert "results" not in s
 
-def test_score_case_studies_ranks_by_score():
-    from analysis import score_case_studies
-    results = score_case_studies(SAMPLE_REQUIREMENTS, SAMPLE_CASE_STUDIES)
+
+def test_extract_sections_empty_string():
+    from analysis import _extract_sections
+    assert _extract_sections("") == {}
+
+
+def test_extract_sections_no_headers():
+    from analysis import _extract_sections
+    assert _extract_sections("A project about demand planning with no section labels.") == {}
+
+
+def test_extract_sections_outcomes_alias():
+    from analysis import _extract_sections
+    s = _extract_sections("Challenge: Hard problem.\nOutcomes: Good things happened.")
+    assert s.get("results") == "Good things happened."
+
+
+def test_extract_sections_case_insensitive():
+    from analysis import _extract_sections
+    s = _extract_sections("CHALLENGE: Hard problem.\nAPPROACH: Good method.")
+    assert "challenge" in s
+    assert "approach" in s
+
+
+def test_extract_sections_first_occurrence_wins():
+    from analysis import _extract_sections
+    s = _extract_sections("Challenge: First.\nApproach: Middle.\nResults: End.\nChallenge: Second.")
+    assert s["challenge"] == "First."
+
+
+# ── match_case_studies ────────────────────────────────────────────────────────
+
+def test_match_case_studies_empty_library():
+    from analysis import match_case_studies
+    assert match_case_studies("We need to optimise routes.", []) == []
+
+
+def test_match_case_studies_returns_results():
+    with patch("analysis._call_claude", return_value=_MOCK_CLAUDE_RESPONSE):
+        from analysis import match_case_studies
+        results = match_case_studies("We need to optimise routes.", SAMPLE_CASE_STUDIES)
+    assert len(results) >= 1
+    assert len(results) <= 5
+
+
+def test_match_case_studies_sorted_by_score():
+    with patch("analysis._call_claude", return_value=_MOCK_CLAUDE_RESPONSE):
+        from analysis import match_case_studies
+        results = match_case_studies("We need to optimise routes.", SAMPLE_CASE_STUDIES)
     scores = [r["score"] for r in results]
     assert scores == sorted(scores, reverse=True)
 
 
-def test_score_case_studies_best_match_is_logistics():
-    from analysis import score_case_studies
-    results = score_case_studies(SAMPLE_REQUIREMENTS, SAMPLE_CASE_STUDIES)
-    # Logistics case study has both industry signal and keyword overlap — must rank first
-    assert results[0]["id"] == 1
-
-
-def test_score_case_studies_returns_top_n():
-    from analysis import score_case_studies
-    results = score_case_studies(SAMPLE_REQUIREMENTS, SAMPLE_CASE_STUDIES, top_n=2)
-    assert len(results) <= 2
-
-
-def test_score_case_studies_result_has_required_keys():
-    from analysis import score_case_studies
-    results = score_case_studies(SAMPLE_REQUIREMENTS, SAMPLE_CASE_STUDIES)
+def test_match_case_studies_result_has_required_keys():
+    with patch("analysis._call_claude", return_value=_MOCK_CLAUDE_RESPONSE):
+        from analysis import match_case_studies
+        results = match_case_studies("We need to optimise routes.", SAMPLE_CASE_STUDIES)
     for r in results:
-        for key in ("id", "title", "industry_full", "ai_type", "has_video", "score", "explanation"):
+        for key in ("id", "title", "industry_full", "engagement_type", "has_video", "score", "explanation"):
             assert key in r
-        assert isinstance(r["score"], float)
-        assert isinstance(r["explanation"], str)
-        assert len(r["explanation"]) > 0
 
 
-def test_score_case_studies_empty_library():
-    from analysis import score_case_studies
-    results = score_case_studies(SAMPLE_REQUIREMENTS, [])
-    assert results == []
+def test_match_case_studies_merges_library_metadata():
+    with patch("analysis._call_claude", return_value=_MOCK_CLAUDE_RESPONSE):
+        from analysis import match_case_studies
+        results = match_case_studies("We need to optimise routes.", SAMPLE_CASE_STUDIES)
+    first = next(r for r in results if r["id"] == 1)
+    assert first["title"] == "Route Optimisation"
+    assert first["industry_full"] == "Logistics"
+    assert first["engagement_type"] == "Machine Learning"
+    assert first["has_video"] == 0
 
 
-def test_score_case_studies_empty_requirements():
-    from analysis import score_case_studies
-    results = score_case_studies(
-        {"off_topic": False, "industry_signals": [], "capabilities_needed": [], "keywords": []},
-        SAMPLE_CASE_STUDIES,
-    )
-    # All scores will be 0 — function should still return list without crashing
-    assert isinstance(results, list)
-    for r in results:
-        assert r["score"] == 0.0
+def test_match_case_studies_sends_sections_not_raw_content():
+    captured = {}
+
+    def capture(system, user, **kwargs):
+        captured["user"] = user
+        return _MOCK_CLAUDE_RESPONSE
+
+    with patch("analysis._call_claude", side_effect=capture):
+        from analysis import match_case_studies
+        match_case_studies("rfp text", SAMPLE_CASE_STUDIES)
+
+    payload = captured["user"]
+    assert '"challenge"' in payload
+    assert "slide_content" not in payload
+
+
+def test_match_case_studies_fallback_to_raw_when_no_sections():
+    unstructured = [
+        {
+            "id": 3,
+            "title": "Unstructured Project",
+            "industry_full": "Retail",
+            "engagement_type": "Data & Analytics",
+            "has_video": 0,
+            "slide_content": "A project about demand planning with no structured sections.",
+        }
+    ]
+    mock = {
+        "text": '[{"id": 3, "score": 60, "explanation": "Relevant."}]',
+        "input_tokens": 100,
+        "output_tokens": 30,
+        "truncated": False,
+    }
+    captured = {}
+
+    def capture(system, user, **kwargs):
+        captured["user"] = user
+        return mock
+
+    with patch("analysis._call_claude", side_effect=capture):
+        from analysis import match_case_studies
+        results = match_case_studies("rfp text", unstructured)
+
+    assert results[0]["id"] == 3
+    assert '"content"' in captured["user"]
+    assert "slide_content" not in captured["user"]

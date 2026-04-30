@@ -1,22 +1,15 @@
 """Smoke tests: every route returns 200 or 302, never 500."""
 from unittest.mock import patch
 
-_MOCK_REQUIREMENTS = {
-    "off_topic": False,
-    "industry_signals": ["logistics"],
-    "problem_type": "fleet optimisation",
-    "capabilities_needed": ["machine learning"],
-    "keywords": ["logistics", "fleet"],
-}
 _MOCK_RESULTS = [
     {
         "id": 1,
         "title": "Logistics Case Study",
         "industry_full": "Logistics",
-        "ai_type": "Predictive Analytics",
+        "engagement_type": "Machine Learning",
         "has_video": 0,
-        "score": 80.0,
-        "explanation": "Industry match (Logistics); matched keywords: logistics, fleet.",
+        "score": 80,
+        "explanation": "Strong match on route optimisation and fleet cost reduction.",
     }
 ]
 
@@ -57,17 +50,15 @@ def test_404_returns_error_page(client):
 
 
 def test_match_analyze_with_keywords_redirects_to_results(client):
-    with patch("analysis.extract_requirements", return_value=_MOCK_REQUIREMENTS), \
-         patch("analysis.score_case_studies", return_value=_MOCK_RESULTS):
+    with patch("analysis.match_case_studies", return_value=_MOCK_RESULTS):
         resp = client.post("/match/analyze", data={"keywords": "AI strategy for a logistics company"})
     assert resp.status_code == 302
     assert b"/match/results" in resp.data
 
 
-def test_match_analyze_off_topic_redirects_to_match(client):
-    off_topic = {"off_topic": True, "off_topic_reason": "This is not a business problem."}
-    with patch("analysis.extract_requirements", return_value=off_topic):
-        resp = client.post("/match/analyze", data={"keywords": "Tell me a joke"})
+def test_match_analyze_empty_results_redirects_to_match(client):
+    with patch("analysis.match_case_studies", return_value=[]):
+        resp = client.post("/match/analyze", data={"keywords": "AI strategy for a logistics company"})
     assert resp.status_code == 302
     assert b"/match/results" not in resp.data
 

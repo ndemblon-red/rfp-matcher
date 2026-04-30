@@ -33,6 +33,13 @@
     {% endif %}
 </div>
 
+{% set strong_matches = results | selectattr('score', 'ge', 40) | list %}
+{% if not strong_matches %}
+<div class="flash flash-warning" style="margin-bottom:16px">
+    No case study scored above 40. The library may not contain a close precedent for this RFP — treat results as loose inspiration only.
+</div>
+{% endif %}
+
 {% for result in results %}
 <div class="match-card">
     <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
@@ -44,12 +51,12 @@
             </div>
         </div>
         <div style="flex-shrink:0">
-            {% if result.score >= 60 %}
-            <span class="score-badge score-high">{{ result.score }}%</span>
-            {% elif result.score >= 30 %}
-            <span class="score-badge score-mid">{{ result.score }}%</span>
+            {% if result.score >= 70 %}
+            <span class="score-badge score-high">{{ result.score }}</span>
+            {% elif result.score >= 40 %}
+            <span class="score-badge score-mid">{{ result.score }}</span>
             {% else %}
-            <span class="score-badge score-low">{{ result.score }}%</span>
+            <span class="score-badge score-low">{{ result.score }}</span>
             {% endif %}
         </div>
     </div>
@@ -58,8 +65,8 @@
         {% if result.industry_full %}
         <span class="badge badge-blue">{{ result.industry_full }}</span>
         {% endif %}
-        {% if result.ai_type %}
-        <span class="badge badge-muted">{{ result.ai_type }}</span>
+        {% if result.engagement_type %}
+        <span class="badge badge-muted">{{ result.engagement_type }}</span>
         {% endif %}
         {% if result.has_video %}
         <span class="badge badge-green">Video</span>

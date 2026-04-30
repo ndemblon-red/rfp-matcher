@@ -18,33 +18,36 @@ def get_conn():
 
 
 _COL_ORDER = [
-    "id", "title", "slide_num", "industry_full", "ai_type",
+    "id", "title", "slide_num", "industry_full", "engagement_type",
     "slide_content", "challenge", "approach", "results",
     "has_video", "needs_review", "content_hash", "synced_at",
 ]
 _COL_DEFAULTS = {
-    "slide_num":    "NULL",
-    "has_video":    "0",
-    "challenge":    "NULL",
-    "approach":     "NULL",
-    "results":      "NULL",
-    "content_hash": "NULL",
+    "slide_num":       "NULL",
+    "has_video":       "0",
+    "challenge":       "NULL",
+    "approach":        "NULL",
+    "results":         "NULL",
+    "content_hash":    "NULL",
+    "engagement_type": "NULL",
 }
+# Maps new column name → old column name for schema migrations involving renames.
+_COL_RENAMES = {"engagement_type": "ai_type"}
 _NEW_TABLE_DDL = """
     CREATE TABLE case_studies_new (
-        id            INTEGER PRIMARY KEY AUTOINCREMENT,
-        title         TEXT NOT NULL,
-        slide_num     INTEGER,
-        industry_full TEXT,
-        ai_type       TEXT,
-        slide_content TEXT,
-        challenge     TEXT,
-        approach      TEXT,
-        results       TEXT,
-        has_video     INTEGER DEFAULT 0,
-        needs_review  INTEGER DEFAULT 0,
-        content_hash  TEXT,
-        synced_at     DATETIME DEFAULT CURRENT_TIMESTAMP,
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        title           TEXT NOT NULL,
+        slide_num       INTEGER,
+        industry_full   TEXT,
+        engagement_type TEXT,
+        slide_content   TEXT,
+        challenge       TEXT,
+        approach        TEXT,
+        results         TEXT,
+        has_video       INTEGER DEFAULT 0,
+        needs_review    INTEGER DEFAULT 0,
+        content_hash    TEXT,
+        synced_at       DATETIME DEFAULT CURRENT_TIMESTAMP,
         UNIQUE(slide_num)
     )
 """
@@ -65,7 +68,8 @@ def _migrate_schema(conn):
     current_sql = row[0] if row and row[0] else ""
 
     needs_migration = (
-        not {"has_video", "challenge", "approach", "results", "slide_num", "content_hash"}.issubset(existing_cols)
+        not {"has_video", "challenge", "approach", "results", "slide_num",
+             "content_hash", "engagement_type"}.issubset(existing_cols)
         or "client" in existing_cols
         or "UNIQUE(slide_num)" not in current_sql
     )
@@ -76,10 +80,14 @@ def _migrate_schema(conn):
     cur.execute("DROP TABLE IF EXISTS case_studies_new")
     cur.execute(_NEW_TABLE_DDL)
 
-    select_parts = [
-        c if c in existing_cols else _COL_DEFAULTS.get(c, "NULL")
-        for c in _COL_ORDER
-    ]
+    select_parts = []
+    for c in _COL_ORDER:
+        if c in existing_cols:
+            select_parts.append(c)
+        elif _COL_RENAMES.get(c) in existing_cols:
+            select_parts.append(_COL_RENAMES[c])
+        else:
+            select_parts.append(_COL_DEFAULTS.get(c, "NULL"))
     cur.execute(
         f"INSERT INTO case_studies_new ({', '.join(_COL_ORDER)}) "
         f"SELECT {', '.join(select_parts)} FROM case_studies"
@@ -98,19 +106,19 @@ def init_db():
         cur = conn.cursor()
         cur.execute("""
             CREATE TABLE IF NOT EXISTS case_studies (
-                id            INTEGER PRIMARY KEY AUTOINCREMENT,
-                title         TEXT NOT NULL,
-                slide_num     INTEGER,
-                industry_full TEXT,
-                ai_type       TEXT,
-                slide_content TEXT,
-                challenge     TEXT,
-                approach      TEXT,
-                results       TEXT,
-                has_video     INTEGER DEFAULT 0,
-                needs_review  INTEGER DEFAULT 0,
-                content_hash  TEXT,
-                synced_at     DATETIME DEFAULT CURRENT_TIMESTAMP,
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                title           TEXT NOT NULL,
+                slide_num       INTEGER,
+                industry_full   TEXT,
+                engagement_type TEXT,
+                slide_content   TEXT,
+                challenge       TEXT,
+                approach        TEXT,
+                results         TEXT,
+                has_video       INTEGER DEFAULT 0,
+                needs_review    INTEGER DEFAULT 0,
+                content_hash    TEXT,
+                synced_at       DATETIME DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(slide_num)
             )
         """)
@@ -135,7 +143,7 @@ def get_all_case_studies():
     try:
         cur = conn.cursor()
         cur.execute("""
-            SELECT id, slide_num, title, industry_full, ai_type, has_video, needs_review, synced_at
+            SELECT id, slide_num, title, industry_full, engagement_type, has_video, needs_review, synced_at
             FROM case_studies
             ORDER BY slide_num, title
         """)
@@ -156,7 +164,7 @@ def get_case_study(case_id):
 
 
 def get_distinct(field):
-    allowed = {"industry_full", "ai_type"}
+    allowed = {"industry_full", "engagement_type"}
     if field not in allowed:
         raise ValueError(f"Invalid field: {field}")
     conn = get_conn()
@@ -184,7 +192,7 @@ def content_hash_exists(content_hash):
         conn.close()
 
 
-def upsert_case_study(title, slide_num, industry_full, ai_type, slide_content,
+def upsert_case_study(title, slide_num, industry_full, engagement_type, slide_content,
                       challenge, approach, results, has_video=0, needs_review=0,
                       content_hash=None):
     conn = get_conn()
@@ -198,28 +206,28 @@ def upsert_case_study(title, slide_num, industry_full, ai_type, slide_content,
         if exists:
             cur.execute("""
                 UPDATE case_studies SET
-                    title         = ?,
-                    industry_full = ?,
-                    ai_type       = ?,
-                    slide_content = ?,
-                    challenge     = ?,
-                    approach      = ?,
-                    results       = ?,
-                    has_video     = ?,
-                    needs_review  = ?,
-                    content_hash  = ?,
-                    synced_at     = CURRENT_TIMESTAMP
+                    title           = ?,
+                    industry_full   = ?,
+                    engagement_type = ?,
+                    slide_content   = ?,
+                    challenge       = ?,
+                    approach        = ?,
+                    results         = ?,
+                    has_video       = ?,
+                    needs_review    = ?,
+                    content_hash    = ?,
+                    synced_at       = CURRENT_TIMESTAMP
                 WHERE slide_num = ?
-            """, (title, industry_full, ai_type, slide_content,
+            """, (title, industry_full, engagement_type, slide_content,
                   challenge, approach, results, has_video, needs_review, content_hash,
                   slide_num))
         else:
             cur.execute("""
                 INSERT INTO case_studies
-                    (title, slide_num, industry_full, ai_type, slide_content,
+                    (title, slide_num, industry_full, engagement_type, slide_content,
                      challenge, approach, results, has_video, needs_review, content_hash, synced_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-            """, (title, slide_num, industry_full, ai_type, slide_content,
+            """, (title, slide_num, industry_full, engagement_type, slide_content,
                   challenge, approach, results, has_video, needs_review, content_hash))
         conn.commit()
         return "updated" if exists else "added"
@@ -304,7 +312,7 @@ def get_case_studies_for_scoring():
     try:
         cur = conn.cursor()
         cur.execute("""
-            SELECT id, title, industry_full, ai_type, has_video, slide_content
+            SELECT id, title, industry_full, engagement_type, has_video, slide_content
             FROM case_studies
             ORDER BY slide_num, title
         """)
