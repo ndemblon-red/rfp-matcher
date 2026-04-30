@@ -20,13 +20,25 @@
     gap: 6px;
     margin-top: 8px;
 }
+.cap-match {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 600;
+    background: var(--green-soft);
+    color: var(--green);
+    border: 1px solid var(--green-soft);
+}
 {% endblock %}
 
 {% block content %}
 <div class="page-header">
     <a href="{{ url_for('match') }}" class="back-link">← New search</a>
     <h1 class="page-title">Match Results</h1>
-    {% if problem_type %}
+    {% if brief and brief.objective %}
+    <p class="page-subtitle">{{ brief.objective }}</p>
+    {% elif problem_type %}
     <p class="page-subtitle">{{ problem_type | capitalize }}</p>
     {% else %}
     <p class="page-subtitle">Top {{ results | length }} matching case studies</p>
@@ -72,6 +84,14 @@
         <span class="badge badge-green">Video</span>
         {% endif %}
     </div>
+
+    {% if result.matched_caps %}
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px">
+        {% for cap in result.matched_caps %}
+        <span class="cap-match">{{ cap }}</span>
+        {% endfor %}
+    </div>
+    {% endif %}
 
     <div class="match-explanation">{{ result.explanation }}</div>
 </div>

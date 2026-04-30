@@ -107,9 +107,16 @@ def test_upload_route_rejects_empty(client):
 
 def test_upload_route_success_pdf(client, tmp_path):
     extracted = "This is the RFP content about digital transformation."
+    mock_brief = {
+        "objective": "Digital transformation.",
+        "challenges": ["Legacy systems"],
+        "capabilities_needed": ["change management"],
+        "context": {"industry": "", "scale": "", "constraints": ""},
+    }
 
     with patch("extraction.save_upload", return_value=("abc123", str(tmp_path / "abc123.pdf"))), \
-         patch("extraction.extract_text", return_value=extracted):
+         patch("extraction.extract_text", return_value=extracted), \
+         patch("analysis.generate_brief", return_value=mock_brief):
         data = {"file": (io.BytesIO(b"%PDF-1.4"), "rfp.pdf")}
         resp = client.post("/match/upload", data=data, content_type="multipart/form-data",
                            follow_redirects=False)
@@ -118,27 +125,22 @@ def test_upload_route_success_pdf(client, tmp_path):
     assert b"/match/preview" in resp.data
 
 
-def test_preview_route_with_session(client, tmp_path):
-    text = "RFP body " * 100  # enough words to show word count
-    text_file = tmp_path / "abc123.txt"
-    text_file.write_text(text, encoding="utf-8")
-
+def test_preview_route_with_session(client):
     with client.session_transaction() as sess:
         sess["rfp_stem"] = "abc123"
         sess["rfp_filename"] = "my_rfp.pdf"
+        sess["rfp_word_count"] = 200
+        sess["match_brief"] = {
+            "objective": "Optimise logistics fleet routes.",
+            "challenges": ["High fuel costs"],
+            "capabilities_needed": ["route optimisation"],
+            "context": {"industry": "Logistics", "scale": "", "constraints": ""},
+        }
 
-    # Patch the upload folder so the route finds the text file
-    import app as app_module
-    original = app_module.app.config["UPLOAD_FOLDER"]
-    app_module.app.config["UPLOAD_FOLDER"] = str(tmp_path)
-    try:
-        resp = client.get("/match/preview")
-    finally:
-        app_module.app.config["UPLOAD_FOLDER"] = original
-
+    resp = client.get("/match/preview")
     assert resp.status_code == 200
     assert b"my_rfp.pdf" in resp.data
-    assert b"RFP body" in resp.data
+    assert b"RFP Brief" in resp.data
 
 
 def test_preview_route_no_session_redirects(client):

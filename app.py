@@ -191,8 +191,17 @@ def match_upload():
     with open(text_path, "w", encoding="utf-8") as f:
         f.write(text)
 
+    from analysis import generate_brief
+    try:
+        brief = generate_brief(text)
+    except Exception as e:
+        app.logger.warning("generate_brief failed for %s: %s", file.filename, e)
+        brief = None
+
     session["rfp_stem"] = stem
     session["rfp_filename"] = file.filename
+    session["rfp_word_count"] = len(text.split())
+    session["match_brief"] = brief
     return redirect(url_for("match_preview"))
 
 
@@ -201,21 +210,14 @@ def match_preview():
     from flask import session
 
     stem = session.get("rfp_stem")
-    filename = session.get("rfp_filename", "Unknown file")
     if not stem:
         flash("No RFP loaded. Please upload a document.", "warning")
         return redirect(url_for("match"))
 
-    text_path = os.path.join(app.config["UPLOAD_FOLDER"], stem + ".txt")
-    if not os.path.exists(text_path):
-        flash("Extracted text not found. Please re-upload.", "error")
-        return redirect(url_for("match"))
-
-    with open(text_path, encoding="utf-8") as f:
-        text = f.read()
-
-    word_count = len(text.split())
-    return render_template("match_preview.html", filename=filename, text=text, word_count=word_count)
+    filename = session.get("rfp_filename", "Unknown file")
+    word_count = session.get("rfp_word_count", 0)
+    brief = session.get("match_brief")
+    return render_template("match_preview.html", filename=filename, brief=brief, word_count=word_count)
 
 
 @app.route("/match/analyze", methods=["POST"])
@@ -227,6 +229,13 @@ def match_analyze():
     keywords = request.form.get("keywords", "").strip()
     if keywords:
         rfp_text = keywords
+        from analysis import generate_brief
+        try:
+            brief = generate_brief(rfp_text)
+        except Exception as e:
+            app.logger.warning("generate_brief failed for keyword input: %s", e)
+            brief = None
+        session["match_brief"] = brief
     else:
         stem = session.get("rfp_stem")
         if not stem:
@@ -240,9 +249,11 @@ def match_analyze():
             rfp_text = f.read()
 
     case_studies = get_case_studies_for_scoring()
+    brief = session.get("match_brief")
+    capabilities = brief.get("capabilities_needed", []) if brief else []
 
     try:
-        results = match_case_studies(rfp_text, case_studies)
+        results = match_case_studies(rfp_text, case_studies, brief_capabilities=capabilities)
     except Exception as e:
         app.logger.error("match_case_studies failed: %s", e, exc_info=True)
         flash("Analysis failed. Please try again.", "error")
@@ -264,8 +275,9 @@ def match_results():
     if not results:
         flash("No results to show. Run an analysis first.", "warning")
         return redirect(url_for("match"))
+    brief = session.get("match_brief")
     problem_type = session.get("match_problem_type", "")
-    return render_template("match_results.html", results=results, problem_type=problem_type)
+    return render_template("match_results.html", results=results, problem_type=problem_type, brief=brief)
 
 
 # ── Startup ────────────────────────────────────────────────────────────────────
