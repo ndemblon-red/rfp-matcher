@@ -18,8 +18,8 @@ def _row(title_hint, slide_num=1, is_video_variant=False, slide_content=""):
 
 
 _DEFAULT_META = {
-    "industry_full": "Financial Services",
-    "ai_type":       "Generative AI",
+    "industry_full":   "Financial Services",
+    "engagement_type": "Generative AI",
 }
 
 
@@ -189,59 +189,91 @@ def test_infer_industry_returns_none_on_no_match():
     from sync import _infer_industry
     assert _infer_industry("RANDOM PROJECT", "no relevant keywords here") is None
 
-def test_infer_ai_type_generative():
-    from sync import _infer_ai_type
-    assert _infer_ai_type("GenAI solution with RAG pipeline")  == "Generative AI"
-    assert _infer_ai_type("LLM-powered assistant")             == "Generative AI"
-    assert _infer_ai_type("Microsoft Copilot integration")     == "Generative AI"
+def test_infer_engagement_type_generative():
+    from sync import _infer_engagement_type
+    assert _infer_engagement_type("GenAI solution with RAG pipeline")  == "Generative AI"
+    assert _infer_engagement_type("LLM-powered assistant")             == "Generative AI"
+    assert _infer_engagement_type("Microsoft Copilot integration")     == "Generative AI"
+    assert _infer_engagement_type("AI agent framework deployment")     == "Generative AI"
 
-def test_infer_ai_type_machine_learning():
-    from sync import _infer_ai_type
-    assert _infer_ai_type("demand forecasting model")   == "Machine Learning"
-    assert _infer_ai_type("machine learning pipeline")  == "Machine Learning"
-    assert _infer_ai_type("price prediction algorithm") == "Machine Learning"
+def test_infer_engagement_type_machine_learning():
+    from sync import _infer_engagement_type
+    assert _infer_engagement_type("demand forecasting model")   == "Machine Learning"
+    assert _infer_engagement_type("machine learning pipeline")  == "Machine Learning"
+    assert _infer_engagement_type("price prediction algorithm") == "Machine Learning"
+    assert _infer_engagement_type("multi-class classification") == "Machine Learning"
 
-def test_infer_ai_type_computer_vision():
-    from sync import _infer_ai_type
-    assert _infer_ai_type("computer vision for defect detection") == "Computer Vision"
-    assert _infer_ai_type("image recognition system")             == "Computer Vision"
+def test_infer_engagement_type_computer_vision():
+    from sync import _infer_engagement_type
+    assert _infer_engagement_type("computer vision for defect detection") == "Computer Vision"
+    assert _infer_engagement_type("image recognition system")             == "Computer Vision"
 
-def test_infer_ai_type_nlp():
-    from sync import _infer_ai_type
-    assert _infer_ai_type("NLP model for document extraction")  == "NLP"
-    assert _infer_ai_type("natural language understanding")     == "NLP"
-    assert _infer_ai_type("sentiment analysis of reviews")      == "NLP"
+def test_infer_engagement_type_nlp():
+    from sync import _infer_engagement_type
+    assert _infer_engagement_type("NLP model for document extraction")  == "NLP"
+    assert _infer_engagement_type("natural language understanding")     == "NLP"
+    assert _infer_engagement_type("sentiment analysis of reviews")      == "NLP"
+    assert _infer_engagement_type("document processing pipeline")       == "NLP"
 
-def test_infer_ai_type_data_analytics():
-    from sync import _infer_ai_type
-    assert _infer_ai_type("analytics dashboard for reporting")  == "Data & Analytics"
-    assert _infer_ai_type("enterprise BI platform")             == "Data & Analytics"
+def test_infer_engagement_type_data_analytics():
+    from sync import _infer_engagement_type
+    assert _infer_engagement_type("analytics dashboard for reporting")  == "Data & Analytics"
+    assert _infer_engagement_type("enterprise BI platform")             == "Data & Analytics"
 
-def test_infer_ai_type_software_platform():
-    from sync import _infer_ai_type
-    assert _infer_ai_type("cloud migration and DevOps enablement") == "Software & Platform"
-    assert _infer_ai_type("web portal development")                == "Software & Platform"
+def test_infer_engagement_type_software_platform():
+    from sync import _infer_engagement_type
+    assert _infer_engagement_type("cloud migration and DevOps enablement") == "Software & Platform"
+    assert _infer_engagement_type("web portal development")                == "Software & Platform"
+    assert _infer_engagement_type("system integration architecture")       == "Software & Platform"
 
-def test_infer_ai_type_strategy():
-    from sync import _infer_ai_type
-    assert _infer_ai_type("AI strategy and operating model design") == "Strategy"
-    assert _infer_ai_type("digital roadmap and maturity assessment") == "Strategy"
+def test_infer_engagement_type_ai_strategy():
+    from sync import _infer_engagement_type
+    assert _infer_engagement_type("ai strategy and roadmap development")   == "AI Strategy"
+    assert _infer_engagement_type("ai maturity assessment for the board")  == "AI Strategy"
+    assert _infer_engagement_type("ai factory use case prioritisation")    == "AI Strategy"
 
-def test_infer_ai_type_returns_none_on_no_match():
-    from sync import _infer_ai_type
-    assert _infer_ai_type("project update and status report") is None
+def test_infer_engagement_type_digital_strategy():
+    from sync import _infer_engagement_type
+    assert _infer_engagement_type("digital transformation programme")      == "Digital Strategy"
+    assert _infer_engagement_type("operating model redesign")              == "Digital Strategy"
+    assert _infer_engagement_type("IT strategy and architecture review")   == "Digital Strategy"
+    assert _infer_engagement_type("technology strategy for growth")        == "Digital Strategy"
+
+def test_infer_engagement_type_cybersecurity():
+    from sync import _infer_engagement_type
+    assert _infer_engagement_type("cybersecurity posture review")          == "Cybersecurity"
+    assert _infer_engagement_type("vulnerability assessment programme")    == "Cybersecurity"
+    assert _infer_engagement_type("penetration testing and security audit")== "Cybersecurity"
+
+def test_infer_engagement_type_returns_none_on_no_match():
+    from sync import _infer_engagement_type
+    assert _infer_engagement_type("project update and status report") is None
 
 def test_infer_metadata_returns_both_fields():
-    from sync import infer_metadata
-    result = infer_metadata("DRUG DISCOVERY (PHARMACEUTICAL)", "machine learning for compound screening")
-    assert result["industry_full"] == "Healthcare & Life Sciences"
-    assert result["ai_type"]       == "Machine Learning"
+    # Keyword match — Claude fallback must NOT be called
+    with patch("sync._classify_via_claude") as mock_claude:
+        from sync import infer_metadata
+        result = infer_metadata("DRUG DISCOVERY (PHARMACEUTICAL)", "machine learning for compound screening")
+    assert result["industry_full"]   == "Healthcare & Life Sciences"
+    assert result["engagement_type"] == "Machine Learning"
+    mock_claude.assert_not_called()
 
-def test_infer_metadata_returns_none_for_unknown():
-    from sync import infer_metadata
-    result = infer_metadata("MYSTERY PROJECT", "no keywords present at all")
-    assert result["industry_full"] is None
-    assert result["ai_type"]       is None
+def test_infer_metadata_falls_back_to_claude_on_no_keyword_match():
+    with patch("sync._classify_via_claude", return_value="Digital Strategy") as mock_claude:
+        from sync import infer_metadata
+        result = infer_metadata("LOYALTY PROGRAMME DESIGN", "omni-channel customer retention initiative")
+    assert result["engagement_type"] == "Digital Strategy"
+    mock_claude.assert_called_once_with(
+        "LOYALTY PROGRAMME DESIGN",
+        "omni-channel customer retention initiative"[:300],
+    )
+
+def test_infer_metadata_returns_none_if_claude_returns_none():
+    with patch("sync._classify_via_claude", return_value=None):
+        from sync import infer_metadata
+        result = infer_metadata("MYSTERY PROJECT", "no keywords present at all")
+    assert result["industry_full"]   is None
+    assert result["engagement_type"] is None
 
 
 # ── run_sync unit tests (all I/O mocked) ─────────────────────────────────────
@@ -287,16 +319,16 @@ def test_run_sync_passes_slide_content():
 def test_run_sync_passes_all_metadata_fields():
     slide = _slide("Pfizer Drug Discovery", slide_num=5)
     meta = {
-        "industry_full": "Healthcare & Life Sciences",
-        "ai_type":       "Machine Learning",
+        "industry_full":   "Healthcare & Life Sciences",
+        "engagement_type": "Machine Learning",
     }
     result, _, mock_upsert = _run([slide], meta=meta)
 
     kw = mock_upsert.call_args_list[0].kwargs
-    assert kw["title"]         == "Pfizer Drug Discovery"
-    assert kw["slide_num"]     == 5
-    assert kw["industry_full"] == "Healthcare & Life Sciences"
-    assert kw["ai_type"]       == "Machine Learning"
+    assert kw["title"]           == "Pfizer Drug Discovery"
+    assert kw["slide_num"]       == 5
+    assert kw["industry_full"]   == "Healthcare & Life Sciences"
+    assert kw["engagement_type"] == "Machine Learning"
 
 def test_run_sync_skips_slide_with_no_title():
     slide = _slide("", slide_num=3)   # empty title_hint
