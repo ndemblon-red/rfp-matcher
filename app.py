@@ -259,10 +259,6 @@ def match_analyze():
         flash("Analysis failed. Please try again.", "error")
         return redirect(url_for("match"))
 
-    if not results:
-        flash("No matching case studies found. Try a different description.", "warning")
-        return redirect(url_for("match"))
-
     session["match_results"] = results
     return redirect(url_for("match_results"))
 

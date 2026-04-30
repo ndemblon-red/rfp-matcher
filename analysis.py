@@ -148,24 +148,30 @@ _SYSTEM_MATCH = """You are a case study matching assistant for a management cons
 You will receive a client RFP or business problem description, and a set of consulting case studies.
 Each case study contains only the business challenge, approach, and outcomes — no industry or sector labels.
 
-Your task: identify the 5 most relevant case studies based purely on similarity of business problem, approach, and outcomes to the RFP.
+Your task: identify the most relevant case studies (up to 5) based purely on similarity of business problem, approach, and outcomes to the RFP. Only return case studies that score above 25.
 
 Scoring rubric — be strict:
 - 70–100: Genuinely strong match. The case study addresses a substantially similar business challenge and approach. A consultant could directly cite it as a precedent.
 - 40–69: Partial match. Meaningful overlap in problem type or approach, but not both.
-- 0–39: Weak match. Only superficial or coincidental similarity.
+- 26–39: Weak match. Only superficial or coincidental similarity.
+- 25 and below: Do not include in the response.
+
+A genuine match requires the core business problem — what the client is trying to achieve and why — to be substantially similar. Generic overlap in terms like 'cost', 'analysis', 'strategy', or 'transformation' alone is NOT sufficient for a score above 30. If you find yourself citing only generic business terms as the reason for similarity, score below 30.
 
 Critical rules:
 - Ignore industry and sector entirely. A retail loyalty programme can match a telco retention strategy if the underlying business problem and approach are the same.
 - Match on the nature of the problem, the analytical or strategic approach, and the type of outcome — not on surface-level keywords or industry labels.
 - Do not penalise a case study for being in a different industry or having a different engagement type.
+- For each case study you consider, you must briefly state the key difference between the RFP and the case study before assigning a score. This prevents surface-level keyword matching from inflating scores.
 
-For each of the top 5 matches, write a 2–3 sentence explanation that reasons about WHY the business problem is similar — what specifically in the case study mirrors the client's challenge.
+For each qualifying match, write a 2–3 sentence explanation. Begin with "Key difference: [one sentence on the most important way this case study differs from the RFP]." Then add 1–2 sentences on why it is still a useful precedent despite that difference.
 
 If a "Capabilities needed" list is provided, also return matched_caps: the subset of those capability tags that are genuinely addressed by the case study, judged by meaning not exact wording. Return an empty array if none apply or no list was provided.
 
-Respond with ONLY a valid JSON array of exactly 5 items, sorted by score descending. No markdown, no preamble:
-[{"id": <integer>, "score": <integer 0–100>, "explanation": "<2–3 sentences>", "matched_caps": [<string>, ...]}, ...]"""
+Return ONLY case studies scoring above 25, up to a maximum of 5, sorted by score descending. If fewer than 5 qualify, return only those that do. If none qualify, return an empty array [].
+
+Respond with ONLY a valid JSON array. No markdown, no preamble:
+[{"id": <integer>, "score": <integer 26–100>, "explanation": "<Key difference: ...> <1–2 sentences>", "matched_caps": [<string>, ...]}, ...]"""
 
 
 def match_case_studies(rfp_text, case_studies, brief_capabilities=None):
@@ -202,7 +208,7 @@ def match_case_studies(rfp_text, case_studies, brief_capabilities=None):
     result = _call_claude(
         system=_SYSTEM_MATCH,
         user=user_msg,
-        max_tokens=1500,
+        max_tokens=2000,
         temperature=0.1,
     )
     if result["truncated"]:
@@ -210,10 +216,11 @@ def match_case_studies(rfp_text, case_studies, brief_capabilities=None):
 
     scored = _safe_parse_json(result["text"], "match_case_studies")
     scored.sort(key=lambda x: x.get("score", 0), reverse=True)
+    above_threshold = [item for item in scored if item.get("score", 0) > 25]
 
     cs_by_id = {cs["id"]: cs for cs in case_studies}
     results = []
-    for item in scored[:5]:
+    for item in above_threshold[:5]:
         cs = cs_by_id.get(item["id"], {})
         results.append({
             "id": item["id"],

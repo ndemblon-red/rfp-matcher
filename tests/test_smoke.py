@@ -64,12 +64,12 @@ def test_match_analyze_with_keywords_redirects_to_results(client):
     assert b"/match/results" in resp.data
 
 
-def test_match_analyze_empty_results_redirects_to_match(client):
+def test_match_analyze_empty_results_shows_results_page(client):
     with patch("analysis.match_case_studies", return_value=[]), \
          patch("analysis.generate_brief", return_value=_MOCK_BRIEF):
         resp = client.post("/match/analyze", data={"keywords": "AI strategy for a logistics company"})
     assert resp.status_code == 302
-    assert b"/match/results" not in resp.data
+    assert b"/match/results" in resp.data
 
 
 def test_match_preview_loads_with_session(client):
