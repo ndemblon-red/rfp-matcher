@@ -1,16 +1,36 @@
+import array
 import os
 import json
 import re
 import logging
 
 import anthropic
+import openai
 from dotenv import load_dotenv
 
 load_dotenv()
 logger = logging.getLogger(__name__)
 
+# ── API clients ───────────────────────────────────────────────────────────────
+
 client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
+_openai_client = None
+
+
+def _get_openai_client():
+    global _openai_client
+    if _openai_client is None:
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise RuntimeError(
+                "OPENAI_API_KEY is not set — add it to .env to enable embedding generation"
+            )
+        _openai_client = openai.OpenAI(api_key=api_key)
+    return _openai_client
+
+
+# ── Anthropic helpers ─────────────────────────────────────────────────────────
 
 def _call_claude(system, user, max_tokens=512, temperature=0.2):
     try:
@@ -141,7 +161,115 @@ def _extract_sections(slide_content):
     return out
 
 
-# ── Single-call matching ──────────────────────────────────────────────────────
+# ── Embedding helpers ─────────────────────────────────────────────────────────
+
+def _cosine_similarity(a, b):
+    """Cosine similarity between two equal-length float sequences."""
+    dot = sum(x * y for x, y in zip(a, b))
+    norm_a = sum(x * x for x in a) ** 0.5
+    norm_b = sum(x * x for x in b) ** 0.5
+    if norm_a == 0.0 or norm_b == 0.0:
+        return 0.0
+    return dot / (norm_a * norm_b)
+
+
+def _serialize_embedding(embedding):
+    """Pack a list of floats into a bytes BLOB (float32, little-endian)."""
+    return array.array("f", embedding).tobytes()
+
+
+def _deserialize_embedding(blob):
+    """Unpack a bytes BLOB back into a list of floats."""
+    a = array.array("f")
+    a.frombytes(blob)
+    return list(a)
+
+
+def _build_rfp_embedding_text(brief):
+    """Build compact text for RFP embedding from a structured brief dict.
+
+    Uses objective + challenges + capabilities_needed — strips procurement boilerplate.
+    """
+    parts = []
+    objective = (brief.get("objective") or "").strip()
+    if objective:
+        parts.append(objective)
+    challenges = brief.get("challenges") or []
+    if challenges:
+        parts.append("Challenges: " + "; ".join(challenges))
+    caps = brief.get("capabilities_needed") or []
+    if caps:
+        parts.append("Capabilities: " + ", ".join(caps))
+    return "\n".join(parts)
+
+
+def _build_cs_embedding_text(slide_content):
+    """Build text for case study embedding using extracted Challenge/Approach/Results sections.
+
+    Falls back to raw slide content when no structured sections are found.
+    """
+    sections = _extract_sections(slide_content or "")
+    if sections:
+        parts = []
+        for key in ("challenge", "approach", "results"):
+            if key in sections:
+                parts.append(f"{key.capitalize()}: {sections[key]}")
+        return "\n".join(parts)
+    return (slide_content or "").strip()
+
+
+def generate_embedding(text):
+    """Generate an embedding vector using OpenAI text-embedding-3-small.
+
+    Returns a list of floats.
+    Raises RuntimeError on API failure or missing API key.
+    """
+    try:
+        response = _get_openai_client().embeddings.create(
+            model="text-embedding-3-small",
+            input=text,
+        )
+        return response.data[0].embedding
+    except openai.APIStatusError as e:
+        raise RuntimeError(f"OpenAI API error ({e.status_code}): {e.message}") from e
+    except openai.APIConnectionError as e:
+        raise RuntimeError(f"Could not connect to OpenAI API: {e}") from e
+
+
+def store_embeddings():
+    """Generate and store embeddings for any case study that does not have one yet.
+
+    Returns {"generated": int, "failed": int}.
+    Never raises — failures are logged and counted.
+    """
+    from db import get_case_studies_without_embeddings, store_case_study_embedding
+
+    candidates = get_case_studies_without_embeddings()
+    if not candidates:
+        logger.info("store_embeddings: all case studies already have embeddings")
+        return {"generated": 0, "failed": 0}
+
+    generated = failed = 0
+    for cs in candidates:
+        try:
+            text = _build_cs_embedding_text(cs.get("slide_content") or "")
+            if not text.strip():
+                logger.warning("Case study %d %r has no content to embed — skipping", cs["id"], cs.get("title"))
+                failed += 1
+                continue
+            embedding = generate_embedding(text)
+            blob = _serialize_embedding(embedding)
+            store_case_study_embedding(cs["id"], blob, "text-embedding-3-small")
+            generated += 1
+        except Exception as e:
+            logger.error("Failed to embed case study %d %r: %s", cs["id"], cs.get("title"), e)
+            failed += 1
+
+    logger.info("store_embeddings: %d generated, %d failed", generated, failed)
+    return {"generated": generated, "failed": failed}
+
+
+# ── Matching ──────────────────────────────────────────────────────────────────
 
 _SYSTEM_MATCH = """You are a case study matching assistant for a management consulting firm.
 
@@ -174,12 +302,16 @@ Respond with ONLY a valid JSON array. No markdown, no preamble:
 [{"id": <integer>, "score": <integer 26–100>, "explanation": "<Key difference: ...> <1–2 sentences>", "matched_caps": [<string>, ...]}, ...]"""
 
 
-def match_case_studies(rfp_text, case_studies, brief_capabilities=None):
-    """Match RFP text against all case studies in a single Claude API call.
+def match_case_studies(rfp_text, case_studies, brief_capabilities=None, brief=None):
+    """Match RFP text against case studies using embedding pre-selection + Claude reasoning.
 
-    Sends extracted Challenge/Approach/Results sections for each case study;
-    falls back to raw slide content when no structured sections are found.
-    Returns up to 5 dicts: {id, title, industry_full, engagement_type, has_video, score, explanation, matched_caps}.
+    Step 1 (free, instant): cosine similarity between RFP embedding and stored case study
+    embeddings — returns top 10 candidates.
+    Step 2 (Claude API): deep reasoning on those candidates — score, explanation, matched_caps.
+
+    Falls back to sending all case studies to Claude when no embeddings are stored.
+    Returns up to 5 dicts above score 25: {id, title, industry_full, engagement_type,
+    has_video, score, explanation, matched_caps}.
     Raises RuntimeError on API failure, ValueError if response is not valid JSON.
     """
     if not case_studies:
@@ -187,8 +319,33 @@ def match_case_studies(rfp_text, case_studies, brief_capabilities=None):
 
     capabilities = brief_capabilities or []
 
+    # ── Step 1: embedding-based pre-selection ─────────────────────────────────
+    cs_with_emb = [cs for cs in case_studies if cs.get("embedding")]
+    if cs_with_emb:
+        if brief is None:
+            brief = generate_brief(rfp_text)
+        rfp_emb_text = _build_rfp_embedding_text(brief)
+        rfp_emb = generate_embedding(rfp_emb_text)
+
+        sims = []
+        for cs in cs_with_emb:
+            cs_emb = _deserialize_embedding(cs["embedding"])
+            sims.append((_cosine_similarity(rfp_emb, cs_emb), cs))
+        sims.sort(key=lambda x: x[0], reverse=True)
+        candidates = [cs for _, cs in sims[:10]]
+        logger.info(
+            "Embedding pre-selection: %d candidates from %d case studies (%d had embeddings)",
+            len(candidates), len(case_studies), len(cs_with_emb),
+        )
+    else:
+        logger.warning(
+            "No stored embeddings — sending all %d case studies to Claude", len(case_studies)
+        )
+        candidates = case_studies
+
+    # ── Step 2: Claude deep reasoning ─────────────────────────────────────────
     cs_payload = []
-    for cs in case_studies:
+    for cs in candidates:
         sections = _extract_sections(cs.get("slide_content") or "")
         entry = {"id": cs["id"], "title": cs["title"]}
         if sections:

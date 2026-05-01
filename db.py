@@ -20,7 +20,7 @@ def get_conn():
 _COL_ORDER = [
     "id", "title", "slide_num", "industry_full", "engagement_type",
     "slide_content", "challenge", "approach", "results",
-    "has_video", "needs_review", "content_hash", "synced_at",
+    "has_video", "needs_review", "content_hash", "embedding", "embedding_model", "synced_at",
 ]
 _COL_DEFAULTS = {
     "slide_num":       "NULL",
@@ -30,6 +30,8 @@ _COL_DEFAULTS = {
     "results":         "NULL",
     "content_hash":    "NULL",
     "engagement_type": "NULL",
+    "embedding":       "NULL",
+    "embedding_model": "NULL",
 }
 # Maps new column name → old column name for schema migrations involving renames.
 _COL_RENAMES = {"engagement_type": "ai_type"}
@@ -47,6 +49,8 @@ _NEW_TABLE_DDL = """
         has_video       INTEGER DEFAULT 0,
         needs_review    INTEGER DEFAULT 0,
         content_hash    TEXT,
+        embedding       BLOB,
+        embedding_model TEXT,
         synced_at       DATETIME DEFAULT CURRENT_TIMESTAMP,
         UNIQUE(slide_num)
     )
@@ -99,6 +103,17 @@ def _migrate_schema(conn):
     logger.info("Schema migration complete: %d rows preserved", migrated)
 
 
+def _add_column_if_missing(conn, column, definition):
+    """Add a column to case_studies if it does not already exist."""
+    cur = conn.cursor()
+    cur.execute("PRAGMA table_info(case_studies)")
+    cols = {row[1] for row in cur.fetchall()}
+    if column not in cols:
+        cur.execute(f"ALTER TABLE case_studies ADD COLUMN {column} {definition}")
+        conn.commit()
+        logger.info("Added column %s to case_studies", column)
+
+
 def init_db():
     conn = get_conn()
     try:
@@ -118,6 +133,8 @@ def init_db():
                 has_video       INTEGER DEFAULT 0,
                 needs_review    INTEGER DEFAULT 0,
                 content_hash    TEXT,
+                embedding       BLOB,
+                embedding_model TEXT,
                 synced_at       DATETIME DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(slide_num)
             )
@@ -133,6 +150,9 @@ def init_db():
             )
         """)
         conn.commit()
+        # Additive migrations for DBs that predate the embedding columns.
+        _add_column_if_missing(conn, "embedding", "BLOB")
+        _add_column_if_missing(conn, "embedding_model", "TEXT")
         logger.info("Database initialised at %s", DB_PATH)
     finally:
         conn.close()
@@ -204,6 +224,7 @@ def upsert_case_study(title, slide_num, industry_full, engagement_type, slide_co
         )
         exists = cur.fetchone() is not None
         if exists:
+            # Content changed — clear stale embedding so it gets regenerated on next store_embeddings().
             cur.execute("""
                 UPDATE case_studies SET
                     title           = ?,
@@ -216,6 +237,8 @@ def upsert_case_study(title, slide_num, industry_full, engagement_type, slide_co
                     has_video       = ?,
                     needs_review    = ?,
                     content_hash    = ?,
+                    embedding       = NULL,
+                    embedding_model = NULL,
                     synced_at       = CURRENT_TIMESTAMP
                 WHERE slide_num = ?
             """, (title, industry_full, engagement_type, slide_content,
@@ -307,16 +330,49 @@ def get_last_sync():
 
 
 def get_case_studies_for_scoring():
-    """Return all case studies with slide_content included, for use by the scoring function."""
+    """Return all case studies with slide_content and embedding, for use by the matching engine."""
     conn = get_conn()
     try:
         cur = conn.cursor()
         cur.execute("""
-            SELECT id, title, industry_full, engagement_type, has_video, slide_content
+            SELECT id, title, industry_full, engagement_type, has_video, slide_content, embedding
             FROM case_studies
             ORDER BY slide_num, title
         """)
         return [dict(row) for row in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def get_case_studies_without_embeddings():
+    """Return {id, title, slide_content} for case studies that have no stored embedding."""
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT id, title, slide_content
+            FROM case_studies
+            WHERE embedding IS NULL
+            ORDER BY id
+        """)
+        return [dict(row) for row in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def store_case_study_embedding(case_id, embedding_blob, model_name):
+    """Persist a serialised embedding BLOB and its model name for one case study."""
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "UPDATE case_studies SET embedding = ?, embedding_model = ? WHERE id = ?",
+            (embedding_blob, model_name, case_id),
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         conn.close()
 
