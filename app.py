@@ -160,19 +160,6 @@ def sync_run():
         return {"error": f"Sync failed: {e}"}, 500
 
 
-@app.route("/sync/embed", methods=["POST"])
-def sync_embed():
-    from analysis import store_embeddings
-    try:
-        stats = store_embeddings()
-        return stats
-    except RuntimeError as e:
-        app.logger.warning("store_embeddings failed: %s", e)
-        return {"error": str(e)}, 400
-    except Exception as e:
-        app.logger.error("store_embeddings failed: %s", e, exc_info=True)
-        return {"error": f"Embedding generation failed: {e}"}, 500
-
 
 @app.route("/match")
 def match():

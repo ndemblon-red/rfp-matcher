@@ -222,7 +222,9 @@ def upsert_case_study(title, slide_num, industry_full, engagement_type, slide_co
             "SELECT id FROM case_studies WHERE slide_num = ?",
             (slide_num,),
         )
-        exists = cur.fetchone() is not None
+        row = cur.fetchone()
+        exists = row is not None
+        existing_id = row["id"] if row else None
         if exists:
             # Content changed — clear stale embedding so it gets regenerated on next store_embeddings().
             cur.execute("""
@@ -253,7 +255,7 @@ def upsert_case_study(title, slide_num, industry_full, engagement_type, slide_co
             """, (title, slide_num, industry_full, engagement_type, slide_content,
                   challenge, approach, results, has_video, needs_review, content_hash))
         conn.commit()
-        return "updated" if exists else "added"
+        return ("updated", existing_id) if exists else ("added", cur.lastrowid)
     except Exception:
         conn.rollback()
         raise
@@ -344,17 +346,30 @@ def get_case_studies_for_scoring():
         conn.close()
 
 
-def get_case_studies_without_embeddings():
-    """Return {id, title, slide_content} for case studies that have no stored embedding."""
+def get_case_studies_without_embeddings(case_ids=None):
+    """Return {id, title, slide_content} for case studies that have no stored embedding.
+
+    If case_ids is provided, only consider those specific records.
+    """
+    if case_ids is not None and not case_ids:
+        return []
     conn = get_conn()
     try:
         cur = conn.cursor()
-        cur.execute("""
-            SELECT id, title, slide_content
-            FROM case_studies
-            WHERE embedding IS NULL
-            ORDER BY id
-        """)
+        if case_ids:
+            placeholders = ",".join("?" * len(case_ids))
+            cur.execute(
+                f"SELECT id, title, slide_content FROM case_studies "
+                f"WHERE embedding IS NULL AND id IN ({placeholders}) ORDER BY id",
+                list(case_ids),
+            )
+        else:
+            cur.execute("""
+                SELECT id, title, slide_content
+                FROM case_studies
+                WHERE embedding IS NULL
+                ORDER BY id
+            """)
         return [dict(row) for row in cur.fetchall()]
     finally:
         conn.close()

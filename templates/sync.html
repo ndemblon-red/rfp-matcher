@@ -47,20 +47,6 @@
 </div>
 
 <div id="syncResult" style="display:none"></div>
-
-<div class="card" style="margin-bottom:20px">
-    <div style="font-size:13px;color:var(--text-muted);margin-bottom:16px;line-height:1.7">
-        Generate semantic embeddings for case studies that don't have one yet.
-        Embeddings enable fast similarity search and are required for the two-step matching pipeline.
-        This runs automatically after each sync; use this button to generate them independently
-        (e.g. after setting up OPENAI_API_KEY for the first time).
-    </div>
-    <button class="btn btn-secondary" id="embedBtn" onclick="runEmbed()">
-        ⊕ Generate Embeddings
-    </button>
-</div>
-
-<div id="embedResult" style="display:none"></div>
 {% endblock %}
 
 {% block extra_js %}
@@ -81,9 +67,10 @@ function runSync() {
                 result.innerHTML = '<div class="flash flash-error">' + data.error + '</div>';
             } else {
                 var html = '<div class="stats-row">' +
-                    statCard(data.added,   'Added',   'green') +
-                    statCard(data.updated, 'Updated', 'blue') +
-                    statCard(data.skipped, 'Skipped', '') +
+                    statCard(data.added,                'Added',      'green') +
+                    statCard(data.updated,              'Updated',    'blue') +
+                    statCard(data.skipped,              'Skipped',    '') +
+                    statCard(data.embeddings_generated, 'Embedded',   '') +
                     '</div>';
                 if (data.warnings && data.warnings.length) {
                     html += '<div class="card"><div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--amber);margin-bottom:12px">New entries — please verify in Excel</div>';
@@ -113,34 +100,5 @@ function statCard(val, label, color) {
 }
 
 function e(s) { return (s || '—').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-
-function runEmbed() {
-    var btn = document.getElementById('embedBtn');
-    var result = document.getElementById('embedResult');
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner"></span> Generating…';
-    result.style.display = 'none';
-
-    fetch('/sync/embed', { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
-        .then(function (r) { return r.json(); })
-        .then(function (data) {
-            btn.disabled = false;
-            btn.innerHTML = '⊕ Generate Embeddings';
-            if (data.error) {
-                result.innerHTML = '<div class="flash flash-error">' + e(data.error) + '</div>';
-            } else {
-                var msg = 'Done — ' + data.generated + ' embedding' + (data.generated !== 1 ? 's' : '') + ' generated';
-                if (data.failed) { msg += ', ' + data.failed + ' failed (check logs)'; }
-                result.innerHTML = '<div class="flash flash-success">' + msg + '.</div>';
-            }
-            result.style.display = '';
-        })
-        .catch(function (err) {
-            btn.disabled = false;
-            btn.innerHTML = '⊕ Generate Embeddings';
-            result.innerHTML = '<div class="flash flash-error">Embedding generation failed: ' + err.message + '</div>';
-            result.style.display = '';
-        });
-}
 </script>
 {% endblock %}

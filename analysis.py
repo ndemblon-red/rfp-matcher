@@ -236,15 +236,17 @@ def generate_embedding(text):
         raise RuntimeError(f"Could not connect to OpenAI API: {e}") from e
 
 
-def store_embeddings():
-    """Generate and store embeddings for any case study that does not have one yet.
+def store_embeddings(case_ids=None):
+    """Generate and store embeddings for case studies that do not have one yet.
 
+    If case_ids is provided, only consider those specific records (e.g. records
+    added or updated in the current sync run). Pass None to process all missing.
     Returns {"generated": int, "failed": int}.
     Never raises — failures are logged and counted.
     """
     from db import get_case_studies_without_embeddings, store_case_study_embedding
 
-    candidates = get_case_studies_without_embeddings()
+    candidates = get_case_studies_without_embeddings(case_ids=case_ids)
     if not candidates:
         logger.info("store_embeddings: all case studies already have embeddings")
         return {"generated": 0, "failed": 0}
@@ -267,6 +269,27 @@ def store_embeddings():
 
     logger.info("store_embeddings: %d generated, %d failed", generated, failed)
     return {"generated": generated, "failed": failed}
+
+
+# ── Explanation parsing ───────────────────────────────────────────────────────
+
+def _parse_explanation(explanation):
+    """Split 'Key difference: X. Y.' into {'difference': X, 'similarity': Y}.
+
+    Handles missing prefix gracefully: returns the full text as similarity.
+    """
+    text = (explanation or "").strip()
+    prefix = "key difference:"
+    if text.lower().startswith(prefix):
+        rest = text[len(prefix):].strip()
+        idx = rest.find(". ")
+        if idx != -1:
+            return {
+                "difference": rest[:idx + 1].strip(),
+                "similarity": rest[idx + 2:].strip(),
+            }
+        return {"difference": rest.rstrip("."), "similarity": ""}
+    return {"difference": "", "similarity": text}
 
 
 # ── Matching ──────────────────────────────────────────────────────────────────
@@ -379,6 +402,8 @@ def match_case_studies(rfp_text, case_studies, brief_capabilities=None, brief=No
     results = []
     for item in above_threshold[:5]:
         cs = cs_by_id.get(item["id"], {})
+        raw_explanation = item.get("explanation", "")
+        parsed = _parse_explanation(raw_explanation)
         results.append({
             "id": item["id"],
             "title": cs.get("title", ""),
@@ -386,7 +411,9 @@ def match_case_studies(rfp_text, case_studies, brief_capabilities=None, brief=No
             "engagement_type": cs.get("engagement_type"),
             "has_video": cs.get("has_video", 0),
             "score": item.get("score", 0),
-            "explanation": item.get("explanation", ""),
+            "explanation": raw_explanation,
+            "difference": parsed["difference"],
+            "similarity": parsed["similarity"],
             "matched_caps": item.get("matched_caps") or [],
         })
 

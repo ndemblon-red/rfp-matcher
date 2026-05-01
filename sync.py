@@ -375,6 +375,7 @@ def run_sync():
     slides     = _dedupe_video_variants(raw_slides)
 
     added = updated = skipped = unchanged = 0
+    changed_ids = []
 
     for slide in slides:
         project_name = slide["title_hint"]
@@ -405,7 +406,7 @@ def run_sync():
 
         meta = infer_metadata(project_name, slide["slide_content"])
 
-        action = upsert_case_study(
+        action, case_id = upsert_case_study(
             title=project_name,
             slide_num=slide["slide_num"],
             industry_full=meta.get("industry_full"),
@@ -421,6 +422,7 @@ def run_sync():
             added += 1
         else:
             updated += 1
+        changed_ids.append(case_id)
 
     log_sync_run(added, updated, skipped, warnings=None)
     total = get_case_study_count()
@@ -431,7 +433,7 @@ def run_sync():
 
     from analysis import store_embeddings
     try:
-        emb_stats = store_embeddings()
+        emb_stats = store_embeddings(case_ids=changed_ids)
         logger.info(
             "Embeddings: %d generated, %d failed",
             emb_stats["generated"], emb_stats["failed"],
@@ -441,12 +443,12 @@ def run_sync():
         emb_stats = {"generated": 0, "failed": 0}
 
     return {
-        "added":               added,
-        "updated":             updated,
-        "unchanged":           unchanged,
-        "skipped":             skipped,
-        "total":               total,
-        "warnings":            [],
+        "added":                added,
+        "updated":              updated,
+        "unchanged":            unchanged,
+        "skipped":              skipped,
+        "total":                total,
+        "warnings":             [],
         "embeddings_generated": emb_stats["generated"],
         "embeddings_failed":    emb_stats["failed"],
     }

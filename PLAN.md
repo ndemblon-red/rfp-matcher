@@ -87,23 +87,31 @@ Requirements covered: M1-01, M1-02, M1-03
 **Status: COMPLETE**
 
 ### What it delivers
-A `/sync/run` POST endpoint that reads the PPTX, infers industry and AI type locally (no API
-calls), and upserts case studies to SQLite. Unchanged slides are skipped via content hash.
+A `/sync/run` POST endpoint that reads the PPTX, infers industry and engagement type locally
+(with Claude Haiku fallback when keywords don't match), and upserts case studies to SQLite.
+Unchanged slides are skipped via content hash; slides that moved positions are detected and
+updated. Embeddings are generated automatically after each sync — only for records added or
+updated in that run (not the full library). Sync result shows how many embeddings were
+generated alongside the usual added/updated/skipped counts.
 
 ### Changes
-**sync.py:** `parse_pptx`, `_dedupe_video_variants`, `_infer_industry`, `_infer_ai_type`,
-`infer_metadata`, `run_sync`, `_hash_content`
-**db.py:** `case_studies` table (`title`, `slide_num`, `industry_full`, `ai_type`,
-`slide_content`, `has_video`, `needs_review`, `content_hash`), `upsert_case_study`,
-`content_hash_exists`, `log_sync_run`, `sync_runs` table
-**app.py:** `/sync` GET route (status page), `/sync/run` POST route
-**templates/sync.html:** sync trigger button, last-run stats
+**sync.py:** `parse_pptx`, `_dedupe_video_variants`, `_infer_industry`, `_infer_engagement_type`,
+`_classify_via_claude` (Haiku fallback), `infer_metadata`, `run_sync`, `_hash_content`.
+`run_sync` collects IDs of added/updated records and passes `case_ids` to `store_embeddings`.
+**db.py:** `case_studies` table (`title`, `slide_num`, `industry_full`, `engagement_type`,
+`slide_content`, `challenge`, `approach`, `results`, `has_video`, `needs_review`,
+`content_hash`, `embedding`, `embedding_model`), `upsert_case_study` (returns `(action, id)`
+tuple), `content_hash_exists`, `get_case_study_by_hash`, `update_slide_num`, `log_sync_run`,
+`sync_runs` table, `_migrate_schema` (handles column renames and schema upgrades),
+`get_case_studies_without_embeddings(case_ids=None)` (accepts optional ID filter).
+**app.py:** `/sync` GET, `/sync/run` POST
+**templates/sync.html:** single "Run Sync" button; result shows Added / Updated / Skipped / Embedded counts
 **tests/test_sync.py:** full suite covering parsing helpers, deduplication, local inference,
 `run_sync` with all I/O mocked
 
 ### How to test
 1. Set `PPTX_PATH` in `.env` and run the app
-2. Navigate to `/sync` and click Sync Now
+2. Navigate to `/sync` and click Run Sync
 3. Check the result JSON shows `added > 0`
 4. Sync again — all slides should show `unchanged`
 ```
@@ -111,8 +119,8 @@ pytest tests/test_sync.py -q   # all pass
 ```
 
 ### Technical debt
-- SQLite used instead of PostgreSQL. Acceptable for a single-user internal tool; would need
-  migration to PostgreSQL (and `psycopg2`) before multi-user or production deployment.
+- `ai_type` column renamed to `engagement_type` post-plan; handled by schema migration in `db.py`.
+- SQLite used instead of PostgreSQL. Acceptable for single-user; migrate before multi-user deployment.
 
 ---
 
@@ -123,14 +131,14 @@ Requirements covered: M1-04, M1-05
 
 ### What it delivers
 A sortable, filterable case study table at `/library` and a detail view at `/library/<id>`.
-Users can search by name or industry and sort by any column.
+Users can search by name or industry, filter by engagement type, and sort by any column.
 
 ### Changes
 **app.py:** `/library` GET, `/library/<int:case_id>` GET
 **db.py:** `get_all_case_studies`, `get_case_study`, `get_distinct`, `get_case_study_count`,
 `get_last_sync`
-**templates/library.html:** sortable table (Slide #, Project Name, Industry, AI Type, Video),
-search input, industry / AI type dropdowns, row count
+**templates/library.html:** sortable table (Slide #, Project Name, Industry, Engagement Type,
+Video), search input, industry / engagement type dropdowns, row count
 **templates/library_detail.html:** full case study detail card
 
 ### How to test
@@ -149,17 +157,20 @@ Requirements covered: M2-01, M2-02
 **Status: COMPLETE**
 
 ### What it delivers
-Users can upload a PDF or DOCX at `/match`, see extracted text in a preview page, then
-proceed to analysis (stub — implemented in Slice 5).
+Users can upload a PDF or DOCX at `/match`, see a structured AI-generated brief in a preview
+page (objective, challenges, capabilities needed, context), then proceed to analysis.
+Drag-and-drop is supported; brief generation failures degrade gracefully.
 
 ### Changes
 **extraction.py:** `save_upload`, `extract_text` (pdfplumber for PDF, python-docx for DOCX)
-**app.py:** `/match` GET, `/match/upload` POST, `/match/preview` GET, `/match/analyze` POST (stub)
-**templates/match.html:** file upload form
-**templates/match_preview.html:** extracted text preview, word count, Analyze button
+**analysis.py:** `generate_brief` — called during upload to power the structured preview
+**app.py:** `/match` GET, `/match/upload` POST, `/match/preview` GET
+**templates/match.html:** file upload form with drag-and-drop, keyword textarea, loading state
+**templates/match_preview.html:** structured brief (objective, challenges, capabilities, context),
+word count, Analyse button with loading state
 
 ### How to test
-1. Open `/match` and upload a PDF — preview page shows extracted text
+1. Open `/match` and upload a PDF — brief preview page shows structured analysis
 2. Upload a DOCX — same result
 3. Upload a `.txt` file — rejected with an error flash
 4. Upload with no file selected — rejected with an error flash
@@ -168,64 +179,74 @@ proceed to analysis (stub — implemented in Slice 5).
 
 ## Slice 5: Matching Engine
 Priority: P1
-Requirements covered: M2-03, M3-01, M3-02, M3-03, M3-04, M3-05
-**Status: NOT STARTED**
+Requirements covered: M2-03, M3-01, M3-02, M3-03 ✅ | M3-04, M3-05 ❌ outstanding
+**Status: PARTIAL**
 
-### What it delivers
-The `/match/analyze` endpoint becomes real: it sends RFP text to Claude, scores all case
-studies, and renders a ranked results page showing the top 3–5 matches with explanations.
-A keyword input field on the match page lets users skip file upload entirely. Client logos
-are identified via Claude vision at match time and cached in the DB.
+### What is implemented
 
-### Changes
-**analysis.py** *(new file)*:
-- `extract_requirements(rfp_text) → dict` — Claude API call; returns extracted themes,
-  industry signals, and key capability keywords
-- `score_case_studies(requirements, case_studies) → list[dict]` — score each case study
-  against extracted requirements; return ranked list with `score` and `explanation` fields
-- `identify_client_logo(pptx_path, slide_num) → str | None` — Claude vision call;
-  identifies client from slide logo image
+**M2-03 — Keyword input** ✅
+Textarea on `/match` accepts a plain-text description; submit goes directly to `/match/analyze`
+bypassing file upload.
 
-**db.py:**
-- Add `logo_name TEXT` column to `case_studies` (cached vision result)
-- Add `get_logo_name(case_id)` and `set_logo_name(case_id, name)` for cache read/write
+**M3-01 — RFP brief extraction** ✅
+`generate_brief(rfp_text)` calls Claude Sonnet to return `{objective, challenges,
+capabilities_needed, context}`. Called during upload (for preview) and during keyword-only
+analysis. Handles truncated responses via `_safe_parse_json` with JSON repair.
 
-**app.py:**
-- `/match` GET — add keyword text input alongside file upload form
-- `/match/analyze` POST — implement: read RFP text from session or keyword input, call
-  `extract_requirements`, call `score_case_studies`, run `identify_client_logo` for each
-  result (checking cache first), render results
-- `/match/results` GET — render stored results (so the page survives a refresh)
-- Add Flask-WTF CSRF protection to all POST endpoints
+**M3-02 + M3-03 — Scoring and results** ✅
+`match_case_studies(rfp_text, case_studies, brief_capabilities, brief)` uses a two-step pipeline:
+- **Step 1 (free):** OpenAI `text-embedding-3-small` cosine similarity pre-selects top 10
+  candidates from the full library. Falls back to sending all case studies when no embeddings
+  are stored.
+- **Step 2 (Claude Sonnet):** Deep reasoning scores each candidate 0–100 with strict rubric;
+  returns `score`, `explanation` (starts with key difference), and `matched_caps`.
+  Threshold: only scores > 25 are returned; max 5 results.
+`_extract_sections` parses Challenge/Approach/Results blocks from slide content and sends only
+those sections (not raw text) to Claude to reduce noise.
 
-**templates/match.html:** add keyword textarea as alternative to file upload
-**templates/match_results.html** *(new)*: ranked result cards, each showing project name,
-industry, AI type, client (from logo cache), match explanation, and a link to the library
-detail page
+**Embeddings pipeline** ✅
+`store_embeddings()` generates and persists embeddings for all case studies lacking one.
+Runs automatically after each sync; also available manually via `/sync/embed` POST.
+Stored as float32 BLOB in `case_studies.embedding`; model name in `embedding_model`.
 
-**requirements.txt:** add `flask-wtf`
+**`/match/analyze` POST** ✅ — reads from session (file upload path) or keyword input,
+runs `generate_brief` + `match_case_studies`, stores results in session.
 
-**tests/test_analysis.py** *(new)*:
-- `test_extract_requirements_returns_expected_keys` — mock Claude call, assert dict shape
-- `test_score_case_studies_ranks_by_score` — no API call; pure function
-- `test_score_case_studies_returns_top_n` — assert at most 5 results
-- `test_identify_client_logo_returns_cached` — assert DB hit skips API call
-- `test_identify_client_logo_calls_api_on_miss` — assert API called when no cache
+**`/match/results` GET** ✅ — renders stored results; redirects to `/match` if no session data.
 
-**tests/test_smoke.py:** add `/match/results` and `/match/analyze` route tests
+**`match_results.html`** ✅ — result cards with score badge (colour-coded by tier), industry /
+engagement type badges, video flag, matched capability pills, link to detail. Explanation is
+split into two labelled lines: **Difference** (the key difference sentence from Claude) and
+**Why it fits** (the remaining sentences). Falls back to showing the raw explanation text if
+the "Key difference:" prefix is absent.
 
-### How to test
-1. Open `/match`, type keywords into the text area (no file), click Analyse
-2. Results page shows 3–5 case studies with explanations
-3. Upload a real RFP PDF — results page shows relevant matches
-4. Run analysis twice on the same slide — confirm only one Claude vision call is made
-   (logo_name cached in DB)
-5. Check browser network tab: CSRF token present on all POST requests
+**Tests** ✅
+- `tests/test_analysis.py`: `_extract_sections` (8 cases), `match_case_studies` (10 cases),
+  `generate_brief` (3 cases)
+- `tests/test_embeddings.py`: cosine similarity, serialisation roundtrip, embedding text
+  builders, `generate_embedding`, `store_embeddings`, embedding pre-selection integration (5 cases)
+- `tests/test_smoke.py`: keyword analysis, results page (session), results redirect (no session)
+
+---
+
+### What is still outstanding
+
+**M3-04 — Client logo identification** ❌
+Claude vision call to identify client name from slide logo images. No `identify_client_logo`
+function exists; no `logo_name` column in DB. Deferred — low impact as project titles are
+already shown.
+
+**M3-05 — CSRF protection** ❌
+`flask-wtf` is not in `requirements.txt`. No CSRF tokens in any template. All POST endpoints
+(`/sync/run`, `/sync/embed`, `/match/upload`, `/match/analyze`) are currently unprotected.
+**This should be implemented before the tool is shared more broadly.**
+
+---
 
 ### Notes
-- If `app.py` exceeds ~400 lines after this slice, extract match routes into
-  `routes/match.py` (Flask Blueprint) before Slice 6.
-- CSRF protection added here; retrofit to `/sync/run` and `/match/upload` at the same time.
+- `app.py` is currently 308 lines / 10 routes. Still within budget; reassess after Slice 6.
+- The original plan named this function `extract_requirements`; it was implemented as
+  `generate_brief` with a richer output schema.
 
 ---
 
@@ -263,8 +284,9 @@ non-empty bytes parseable by python-docx
 
 | Issue | Severity | Plan |
 |-------|----------|------|
-| `updated` counter increments on first sync of a fresh DB (content hash mismatch on re-sync with empty hash) | Low | Fix in Slice 5 or as a standalone patch before going live |
+| `updated` counter increments on first sync of a fresh DB (content hash mismatch on re-sync with empty hash) | Low | Fix before going live |
 | SQLite instead of PostgreSQL | Medium | Acceptable for single-user internal use; migrate before multi-user or production deployment |
-| No authentication | Low (deliberate) | Internal tool on trusted network; document this decision. If access needs to be restricted, add Flask-Login in a dedicated auth slice |
-| CSRF protection not yet implemented | Medium | Implement in Slice 5 with Flask-WTF; retrofit all existing POST endpoints at the same time |
-| `app.py` blueprint threshold | Low | Currently 236 lines / 9 routes. Slice 5 adds ~2 routes and ~100 lines — within budget. Reassess after Slice 5 |
+| No authentication | Low (deliberate) | Internal tool on trusted network; document this decision. Add Flask-Login if access needs restricting |
+| CSRF protection not yet implemented | Medium | Implement in Slice 5 remainder with Flask-WTF; retrofit `/sync/run`, `/sync/embed`, `/match/upload`, `/match/analyze` |
+| Client logo identification (M3-04) not implemented | Low | Deferred; project titles already shown. Implement in a separate slice if client branding matters |
+| `app.py` blueprint threshold | Low | Currently 308 lines / 10 routes. Reassess after Slice 6 |

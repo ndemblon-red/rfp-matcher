@@ -30,6 +30,26 @@
     color: var(--green);
     border: 1px solid var(--green-soft);
 }
+.explanation-row {
+    display: grid;
+    grid-template-columns: 90px 1fr;
+    gap: 8px;
+    margin-top: 10px;
+    font-size: 13px;
+    line-height: 1.6;
+    align-items: baseline;
+}
+.explanation-label {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-dim);
+    padding-top: 2px;
+}
+.explanation-text {
+    color: var(--text-muted);
+}
 {% endblock %}
 
 {% block content %}
@@ -99,7 +119,24 @@
     </div>
     {% endif %}
 
+    {% if result.difference or result.similarity %}
+    <div style="margin-top:4px">
+        {% if result.difference %}
+        <div class="explanation-row">
+            <span class="explanation-label">Difference</span>
+            <span class="explanation-text">{{ result.difference }}</span>
+        </div>
+        {% endif %}
+        {% if result.similarity %}
+        <div class="explanation-row">
+            <span class="explanation-label">Why it fits</span>
+            <span class="explanation-text">{{ result.similarity }}</span>
+        </div>
+        {% endif %}
+    </div>
+    {% else %}
     <div class="match-explanation">{{ result.explanation }}</div>
+    {% endif %}
 </div>
 {% endfor %}
 

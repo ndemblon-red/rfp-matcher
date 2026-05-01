@@ -2,9 +2,9 @@
 
 An internal AI tool that matches incoming RFPs and project briefs against a library of past case studies, surfacing the most relevant examples for proposals and pitches.
 
-Built with Flask, SQLite, python-pptx, and the Anthropic Claude API.
+Built with Flask, SQLite, python-pptx, the Anthropic Claude API, and OpenAI embeddings.
 
-> 🚧 **Work in progress** — sync engine and library complete; matching engine in development.
+> 🚧 **Work in progress** — sync engine, library, and matching engine complete; polish slice planned.
 
 ---
 
@@ -14,15 +14,17 @@ Responding to RFPs at a consulting firm typically means:
 - Manually searching through hundreds of slides looking for relevant past work
 - Relying on individual memory of what projects exist
 - Spending 1–3 hours per RFP just finding the right examples
-- Inconsistent quality depending on who writes the proposal
+- Risk of proposing weak analogies because you don't know what you don't know
 
 ## The Solution
 
-A two-part internal tool:
+A three-part internal tool:
 
-1. **Sync Engine** — reads a live PowerPoint deck of case studies directly from SharePoint (via OneDrive sync), extracts structured data from each slide, and stores it in a local SQLite database. No manual data entry. Runs in under 30 seconds with no API calls.
+1. **Sync Engine** — reads a live PowerPoint deck of case studies directly from SharePoint (via OneDrive sync), extracts structured data from each slide, generates semantic embeddings, and stores everything in a local SQLite database. No manual data entry. Runs in under 30 seconds with no LLM API calls.
 
-2. **Matching Engine** — accepts an RFP document (PDF or DOCX) or a plain-text description, sends it to Claude to extract key requirements and themes, scores all case studies against those requirements, and returns the top 3–5 matches with plain-English explanations of why each one is relevant.
+2. **Structured Brief** — when a user uploads an RFP or types a description, Claude generates a structured brief (objective, challenges, capabilities needed, context) that the user reviews before matching. This catches misunderstandings early and makes the tool transparent.
+
+3. **Matching Engine** — two-step semantic pipeline: OpenAI embeddings find the top 10 genuinely similar cases by vector cosine similarity, then Claude does deep reasoning on those 10 to produce ranked results with scores, similarities, key differences, and matched capability tags.
 
 ---
 
@@ -33,33 +35,40 @@ SharePoint (live PPTX)
         │
         ▼
   Sync Engine (sync.py)
-  ┌─────────────────────────────────┐
-  │ • shutil.copy2 → local temp     │
-  │ • Detect case study slide range │
-  │ • Extract title + full text     │
-  │ • Deduplicate video variants    │
-  │ • Local keyword inference       │
-  │   (industry, AI type)           │
-  │ • Content hash for incremental  │
-  │   syncs (handles slide shifts)  │
-  └──────────────┬──────────────────┘
+  ┌──────────────────────────────────────┐
+  │ • shutil.copy2 → local temp          │
+  │ • Detect slide range (dividers)      │
+  │ • Extract title + sections           │
+  │ • Deduplicate video variants         │
+  │ • Local keyword inference            │
+  │   (industry, engagement type)        │
+  │ • Content hash → incremental syncs   │
+  │ • OpenAI embeddings stored in DB     │
+  └──────────────┬───────────────────────┘
                  │
                  ▼
           SQLite Database
                  │
-        ┌────────┴────────┐
-        ▼                 ▼
-  Library View      Matching Engine (analysis.py)
-  /library          ┌─────────────────────────────┐
-                    │ • Upload PDF/DOCX or type    │
-                    │   keywords                   │
-                    │ • Claude API: extract themes │
-                    │ • Score all case studies     │
-                    │ • Return top 3–5 with        │
-                    │   explanations               │
-                    │ • Vision: identify client    │
-                    │   logo on results only       │
-                    └─────────────────────────────┘
+        ┌────────┴─────────┐
+        ▼                  ▼
+  Library View       Matching Engine (analysis.py)
+  /library           ┌──────────────────────────────┐
+                     │ Upload PDF/DOCX or type query │
+                     │                               │
+                     │ Step 0: generate_brief()      │
+                     │ → structured brief preview    │
+                     │                               │
+                     │ Step 1: cosine similarity     │
+                     │ → embed RFP brief             │
+                     │ → compare vs all embeddings   │
+                     │ → top 10 candidates (free)    │
+                     │                               │
+                     │ Step 2: Claude Sonnet         │
+                     │ → deep reasoning on top 10    │
+                     │ → score, similarities,        │
+                     │   differences, matched_caps   │
+                     │ → filter: score > 25 only     │
+                     └──────────────────────────────┘
 ```
 
 ---
@@ -68,13 +77,17 @@ SharePoint (live PPTX)
 
 **Built on a predefined fullstack skill.** The architecture, stack, folder structure, and build methodology follow a company-standard fullstack skill — a reusable blueprint covering Flask patterns, database conventions, security requirements, logging, and a slice-based delivery methodology. This ensured consistency with other internal tools, avoided common pitfalls, and accelerated development significantly.
 
-**No API calls during sync.** Industry and AI type are inferred using a local keyword lookup table — the industry label is already embedded in the slide heading (e.g. `COMMODITY PRICE FORECASTING (PETROCHEMICAL)`). This makes sync free, fast, and reliable. API calls are reserved for the matching step where they add real value.
+**Embeddings prevent false positives.** The matching engine uses OpenAI `text-embedding-3-small` to pre-filter candidates by semantic similarity before Claude scores them. This is the critical design decision — keyword-based pre-filtering was tried first and produced confident-sounding but wrong results (a Norwegian telecom regulatory tender scored 75% against an IT cost review because both mentioned "cost modelling"). Embeddings correctly place these far apart in vector space, so Claude never sees them as candidates.
 
-**Slide number as primary key.** Each case study is keyed by its slide number in the PPTX. Content hashing handles the edge case where new slides are inserted alphabetically (shifting all subsequent numbers) — the hash detects unchanged content and updates the slide number without reprocessing.
+**No LLM calls during sync.** Industry and engagement type are inferred using a local keyword lookup table — the industry label is already in the slide heading (e.g. `COMMODITY PRICE FORECASTING (PETROCHEMICAL)`). Claude Haiku is used as a fallback only for slides the keyword lookup can't categorise, and results are cached permanently. This makes sync free, fast, and reliable.
 
-**Live files via OneDrive sync.** The PPTX lives in SharePoint and is accessed via OneDrive sync. The sync script copies the file locally before opening it (`shutil.copy2`), avoiding OneDrive file locks entirely.
+**Slide number as primary key.** Each case study is keyed by its slide number. Content hashing handles the edge case where new slides are inserted alphabetically (shifting all subsequent numbers) — the hash detects unchanged content and updates the slide number without reprocessing.
 
-**Match on slide content, not metadata.** The matching engine scores against the full slide text — challenge, approach, results — not just tags or categories. This surfaces genuinely similar past work rather than superficial label matches.
+**Live files via OneDrive sync + shutil.copy2.** The PPTX lives in SharePoint and is accessed via OneDrive sync. The sync script copies the file locally before opening it, avoiding OneDrive file locks entirely.
+
+**Match on content, not metadata.** Embeddings and Claude reasoning operate on the Challenge/Approach/Results sections of each slide — not on industry tags or engagement type labels. Two projects in different industries with the same underlying business problem will score higher than two projects in the same industry with different problems.
+
+**Key differences are shown explicitly.** Each result card shows not just why a case is relevant but also the key difference. This actively discourages weak matches by making the gap visible to the user.
 
 ---
 
@@ -83,15 +96,16 @@ SharePoint (live PPTX)
 ```
 rfp-matcher/
 ├── app.py              # Flask app, routes, request lifecycle
-├── sync.py             # PPTX sync engine
+├── sync.py             # PPTX sync engine + embedding generation
 ├── db.py               # Database layer (SQLite)
 ├── extraction.py       # PDF/DOCX text extraction
-├── analysis.py         # Matching engine (Slice 5 — in progress)
+├── analysis.py         # Brief generation, embedding, matching engine
 ├── PLAN.md             # Full build plan with slices and requirements
-├── notes/              # Build retrospective and decision log
+├── docs/               # Architecture decision records
+├── notes/              # Build retrospective and session notes
 ├── templates/          # Jinja2 HTML templates
 ├── static/             # CSS, JS, icons
-├── tests/              # pytest test suite (32+ tests)
+├── tests/              # pytest test suite (129 tests)
 └── .env.example        # Environment variable template
 ```
 
@@ -102,11 +116,11 @@ rfp-matcher/
 | Slice | Description | Status |
 |-------|-------------|--------|
 | 1 | Foundation (Flask, logging, DB, tests) | ✅ Complete |
-| 2 | Sync engine (PPTX → SQLite) | ✅ Complete |
+| 2 | Sync engine (PPTX → SQLite + embeddings) | ✅ Complete |
 | 3 | Case study library (browse, filter, search) | ✅ Complete |
-| 4 | RFP upload + text extraction | ✅ Complete |
-| 5 | Matching engine (Claude API) | 🔄 In progress |
-| 6 | Polish (export, admin, user manual) | ⏳ Planned |
+| 4 | RFP upload + structured brief preview | ✅ Complete |
+| 5 | Matching engine (embeddings + Claude) | ✅ Complete |
+| 6 | Polish (export, user manual) | ⏳ Planned |
 
 ---
 
@@ -114,6 +128,7 @@ rfp-matcher/
 
 - **Backend:** Python, Flask
 - **Database:** SQLite (dev), PostgreSQL (planned for production)
-- **AI:** Anthropic Claude API (claude-sonnet-4-20250514)
+- **LLM:** Anthropic Claude Sonnet (matching, brief generation), Claude Haiku (engagement type fallback)
+- **Embeddings:** OpenAI text-embedding-3-small
 - **Document parsing:** pdfplumber, python-docx, python-pptx
-- **Testing:** pytest (32+ tests)
+- **Testing:** pytest (129 tests)

@@ -32,7 +32,7 @@ def _slide(title_hint="Test Slide", slide_num=1, slide_content="content", has_vi
     }
 
 
-def _run(slides, meta=None, upsert_return="added", hash_exists=False):
+def _run(slides, meta=None, upsert_return=("added", 1), hash_exists=False):
     """Run run_sync with all external calls mocked; return (result, mock_infer, mock_upsert)."""
     if meta is None:
         meta = _DEFAULT_META
@@ -48,7 +48,8 @@ def _run(slides, meta=None, upsert_return="added", hash_exists=False):
          patch("sync.infer_metadata",           return_value=meta) as mock_infer, \
          patch("sync.upsert_case_study",        return_value=upsert_return) as mock_upsert, \
          patch("sync.log_sync_run"), \
-         patch("sync.get_case_study_count",     return_value=max(1, len(slides))):
+         patch("sync.get_case_study_count",     return_value=max(1, len(slides))), \
+         patch("analysis.store_embeddings",     return_value={"generated": 0, "failed": 0}):
         result = run_sync()
     return result, mock_infer, mock_upsert
 
@@ -342,9 +343,10 @@ def test_run_sync_counts_updated_vs_added():
     with patch("sync.parse_pptx",            return_value=[]), \
          patch("sync._dedupe_video_variants", return_value=slides), \
          patch("sync.infer_metadata",         return_value=_DEFAULT_META), \
-         patch("sync.upsert_case_study",      side_effect=["added", "updated"]), \
+         patch("sync.upsert_case_study",      side_effect=[("added", 1), ("updated", 2)]), \
          patch("sync.log_sync_run"), \
-         patch("sync.get_case_study_count",   return_value=2):
+         patch("sync.get_case_study_count",   return_value=2), \
+         patch("analysis.store_embeddings",   return_value={"generated": 0, "failed": 0}):
         result = run_sync()
 
     assert result["added"]   == 1
@@ -394,9 +396,10 @@ def test_run_sync_updates_slide_num_when_slide_moves():
          patch("sync.get_case_study_by_hash", return_value={"id": 7, "slide_num": 10}), \
          patch("sync.update_slide_num")      as mock_update, \
          patch("sync.infer_metadata",         return_value=_DEFAULT_META), \
-         patch("sync.upsert_case_study",      return_value="added"), \
+         patch("sync.upsert_case_study",      return_value=("added", 1)), \
          patch("sync.log_sync_run"), \
-         patch("sync.get_case_study_count",   return_value=1):
+         patch("sync.get_case_study_count",   return_value=1), \
+         patch("analysis.store_embeddings",   return_value={"generated": 0, "failed": 0}):
         result = run_sync()
     assert result["unchanged"] == 1
     assert result["added"] == 0
@@ -410,9 +413,10 @@ def test_run_sync_no_update_when_slide_num_unchanged():
          patch("sync.get_case_study_by_hash", return_value={"id": 7, "slide_num": 10}), \
          patch("sync.update_slide_num")      as mock_update, \
          patch("sync.infer_metadata",         return_value=_DEFAULT_META), \
-         patch("sync.upsert_case_study",      return_value="added"), \
+         patch("sync.upsert_case_study",      return_value=("added", 1)), \
          patch("sync.log_sync_run"), \
-         patch("sync.get_case_study_count",   return_value=1):
+         patch("sync.get_case_study_count",   return_value=1), \
+         patch("analysis.store_embeddings",   return_value={"generated": 0, "failed": 0}):
         result = run_sync()
     assert result["unchanged"] == 1
     mock_update.assert_not_called()
