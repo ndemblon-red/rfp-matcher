@@ -429,11 +429,24 @@ def run_sync():
         added, updated, unchanged, skipped, total,
     )
 
+    from analysis import store_embeddings
+    try:
+        emb_stats = store_embeddings()
+        logger.info(
+            "Embeddings: %d generated, %d failed",
+            emb_stats["generated"], emb_stats["failed"],
+        )
+    except Exception as e:
+        logger.warning("store_embeddings failed after sync: %s", e)
+        emb_stats = {"generated": 0, "failed": 0}
+
     return {
-        "added":     added,
-        "updated":   updated,
-        "unchanged": unchanged,
-        "skipped":   skipped,
-        "total":     total,
-        "warnings":  [],
+        "added":               added,
+        "updated":             updated,
+        "unchanged":           unchanged,
+        "skipped":             skipped,
+        "total":               total,
+        "warnings":            [],
+        "embeddings_generated": emb_stats["generated"],
+        "embeddings_failed":    emb_stats["failed"],
     }

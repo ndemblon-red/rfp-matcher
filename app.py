@@ -44,6 +44,12 @@ app.config["MAX_CONTENT_LENGTH"] = 25 * 1024 * 1024  # 25 MB
 setup_logging(app)
 os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
 
+if not os.getenv("OPENAI_API_KEY"):
+    app.logger.warning(
+        "OPENAI_API_KEY is not set — embedding generation and similarity search will be unavailable. "
+        "Add it to .env to enable the two-step matching pipeline."
+    )
+
 
 # ── Request lifecycle ──────────────────────────────────────────────────────────
 
@@ -154,6 +160,20 @@ def sync_run():
         return {"error": f"Sync failed: {e}"}, 500
 
 
+@app.route("/sync/embed", methods=["POST"])
+def sync_embed():
+    from analysis import store_embeddings
+    try:
+        stats = store_embeddings()
+        return stats
+    except RuntimeError as e:
+        app.logger.warning("store_embeddings failed: %s", e)
+        return {"error": str(e)}, 400
+    except Exception as e:
+        app.logger.error("store_embeddings failed: %s", e, exc_info=True)
+        return {"error": f"Embedding generation failed: {e}"}, 500
+
+
 @app.route("/match")
 def match():
     return render_template("match.html")
@@ -253,7 +273,7 @@ def match_analyze():
     capabilities = brief.get("capabilities_needed", []) if brief else []
 
     try:
-        results = match_case_studies(rfp_text, case_studies, brief_capabilities=capabilities)
+        results = match_case_studies(rfp_text, case_studies, brief_capabilities=capabilities, brief=brief)
     except Exception as e:
         app.logger.error("match_case_studies failed: %s", e, exc_info=True)
         flash("Analysis failed. Please try again.", "error")
@@ -268,7 +288,7 @@ def match_results():
     from flask import session
 
     results = session.get("match_results")
-    if not results:
+    if results is None:
         flash("No results to show. Run an analysis first.", "warning")
         return redirect(url_for("match"))
     brief = session.get("match_brief")
