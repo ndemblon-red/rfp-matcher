@@ -4,7 +4,7 @@ An internal AI tool that matches incoming RFPs and project briefs against a libr
 
 Built with Flask, SQLite, python-pptx, the Anthropic Claude API, and OpenAI embeddings.
 
-> 🚧 **Work in progress** — sync engine, library, and matching engine complete; polish slice planned.
+> ✅ **Core functionality complete** — sync engine, library, matching engine, and eval suite all working. Export and user manual planned.
 
 ---
 
@@ -109,6 +109,18 @@ rfp-matcher/
 ├── tests/              # pytest test suite
 └── .env.example        # Environment variable template
 ```
+
+---
+
+## Evals
+
+The matching engine is validated with a lightweight eval suite (`evals/run_evals.py`) covering three categories:
+
+- **Off-topic guard** — 5 clearly off-topic inputs (general knowledge questions, unrelated requests) must return 0 results or trigger the relevance flag. Tests that the app stays focused on business problems.
+- **Brief quality** — AI-as-judge: Claude scores the generated brief against the original document (1–5). Pass threshold ≥ 3. Iterated through 4 prompt versions to reach consistent 4–4.5/5 scores.
+- **Match quality** — two fixture RFPs: one expected to return strong matches (≥ 2 results above 50), one highly specialised tender expected to return no strong matches (0 results above 40).
+
+Fixture files are gitignored — drop a PDF or TXT into `evals/fixtures/` and run `python evals/run_evals.py`.
 
 ---
 
