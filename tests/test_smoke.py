@@ -14,10 +14,19 @@ _MOCK_RESULTS = [
 ]
 
 _MOCK_BRIEF = {
+    "is_relevant": True,
     "objective": "Reduce fleet delivery costs using ML routing.",
     "challenges": ["High fuel costs", "Inefficient routing"],
     "capabilities_needed": ["predictive analytics", "route optimisation"],
     "context": {"industry": "Logistics", "scale": "500 vehicles", "constraints": ""},
+}
+
+_MOCK_BRIEF_OFF_TOPIC = {
+    "is_relevant": False,
+    "objective": "",
+    "challenges": [],
+    "capabilities_needed": [],
+    "context": {"industry": "", "scale": "", "constraints": ""},
 }
 
 
@@ -97,3 +106,11 @@ def test_match_results_redirects_without_session(client):
     resp = client.get("/match/results")
     assert resp.status_code == 302
     assert b"/match" in resp.data
+
+
+def test_match_analyze_off_topic_redirects_to_match(client):
+    with patch("analysis.generate_brief", return_value=_MOCK_BRIEF_OFF_TOPIC):
+        resp = client.post("/match/analyze", data={"keywords": "what is the capital of France"})
+    assert resp.status_code == 302
+    assert b"/match" in resp.data
+    assert b"results" not in resp.data

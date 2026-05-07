@@ -257,6 +257,7 @@ def test_match_case_studies_fallback_to_raw_when_no_sections():
 
 _MOCK_BRIEF_RESPONSE = {
     "text": json.dumps({
+        "is_relevant": True,
         "objective": "Reduce fleet delivery costs using ML-based routing.",
         "challenges": ["High fuel costs", "Inefficient routing"],
         "capabilities_needed": ["predictive analytics", "route optimisation", "change management"],
@@ -276,8 +277,34 @@ def test_generate_brief_returns_required_keys():
     with patch("analysis._call_claude", return_value=_MOCK_BRIEF_RESPONSE):
         from analysis import generate_brief
         brief = generate_brief("We need to optimise routes.")
-    for key in ("objective", "challenges", "capabilities_needed", "context"):
+    for key in ("is_relevant", "objective", "challenges", "capabilities_needed", "context"):
         assert key in brief
+
+
+def test_generate_brief_is_relevant_true_for_business_input():
+    with patch("analysis._call_claude", return_value=_MOCK_BRIEF_RESPONSE):
+        from analysis import generate_brief
+        brief = generate_brief("We need to optimise routes.")
+    assert brief["is_relevant"] is True
+
+
+def test_generate_brief_is_relevant_false_for_off_topic():
+    off_topic_response = {
+        "text": json.dumps({
+            "is_relevant": False,
+            "objective": "",
+            "challenges": [],
+            "capabilities_needed": [],
+            "context": {"industry": "", "scale": "", "constraints": ""},
+        }),
+        "input_tokens": 100,
+        "output_tokens": 30,
+        "truncated": False,
+    }
+    with patch("analysis._call_claude", return_value=off_topic_response):
+        from analysis import generate_brief
+        brief = generate_brief("what is the capital of France")
+    assert brief["is_relevant"] is False
 
 
 def test_generate_brief_context_has_required_fields():

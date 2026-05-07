@@ -257,6 +257,15 @@ def match_analyze():
 
     case_studies = get_case_studies_for_scoring()
     brief = session.get("match_brief")
+
+    if brief and not brief.get("is_relevant", True):
+        flash(
+            "This doesn't look like an RFP or project brief. "
+            "Please describe a business problem or upload a relevant document.",
+            "warning",
+        )
+        return redirect(url_for("match"))
+
     capabilities = brief.get("capabilities_needed", []) if brief else []
 
     try:

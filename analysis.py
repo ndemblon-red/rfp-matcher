@@ -86,37 +86,77 @@ def _safe_parse_json(text, context="unknown"):
 
 # ── RFP brief generation ─────────────────────────────────────────────────────
 
-_SYSTEM_BRIEF = """You are an RFP analyst for a management consulting firm.
-Analyse the input — which may be a full RFP document or a short business description — and produce a structured brief.
+_SYSTEM_BRIEF_INSTRUCTIONS = """You are an expert RFP analyst. Extract a structured brief from tender/RFP documents that would give a potential respondent an accurate first impression of the engagement.
 
-Respond with ONLY valid JSON. No markdown, no preamble:
+Follow these principles:
+
+OBJECTIVE
+Write a single precise sentence capturing what is being built or delivered, for whom, and its primary purpose. Avoid generic descriptions.
+
+KEY CHALLENGES
+Identify 4-6 challenges that are genuinely specific to this engagement. Prefer technical, operational or contextual challenges over generic ones (e.g. "modelling 100 operators with footprints ranging from 400k to under 5,000 customers" is better than "operator heterogeneity"). Flag challenges that affect fundamental design decisions, not just execution difficulty.
+
+CAPABILITIES NEEDED
+Include both domain expertise AND technical/delivery capabilities. If the RFP specifies tools, languages, methodologies or delivery approaches (e.g. cloud deployment, agile, geospatial analysis), these must appear. Do not reduce a technical build to a list of domain knowledge areas.
+
+CONTEXT
+Beyond industry and scale, capture:
+- Timeline and phase structure if specified
+- Any mandatory ongoing obligations (e.g. annual updates, maintenance windows)
+- Stakeholder process requirements (e.g. public consultations, regulatory approvals)
+- Any flexibility or multi-scenario requirements that affect the design
+
+COMMON ERRORS TO AVOID
+
+Scope creep: Only include technologies, methodologies or approaches explicitly listed as within scope for the deliverable. If the document mentions something only as market context or background — and especially if it explicitly excludes it — do not include it in the brief.
+
+Missing architectural requirements: If the document describes multiple scenarios, configurations or modes the deliverable must support simultaneously, this is a primary design requirement. It must appear in challenges, not buried in context.
+
+Underweighting technical delivery: If the RFP specifies named technical roles, tools, languages, platforms or delivery methodologies, reflect these in capabilities. Do not describe a technical build as a pure strategy or advisory engagement.
+
+Missing ongoing obligations: If the deliverable includes maintenance, annual updates, regulatory cycles or recurring obligations beyond initial delivery, these must appear in context constraints. They affect resourcing and pricing significantly.
+
+Missing stakeholder process requirements: If the tenderer is responsible for consultations, approvals, or anchoring work with external parties, include this in context constraints. It is workload, not just background.
+
+Timeline gaps: If phases with durations are stated, include them in context scale. Do not omit structured delivery timelines.
+
+Language and location requirements: If the RFP specifies language proficiency, nationality, security clearance or physical presence requirements for the delivery team, include these in context constraints. They are hard go/no-go filters that directly affect team composition and should never be omitted.
+
+Experience quality distinctions: If the RFP explicitly distinguishes between conceptual knowledge and hands-on implementation experience — or requires demonstrated references rather than general expertise — capture this distinction in capabilities. Do not flatten "proven hands-on AI implementation experience with references" into "AI expertise".
+
+Procurement constraints: If the RFP includes non-negotiable contractual terms, mandatory templates, or self-selection conditions, note these in context constraints. They cause firms to self-select out and are operationally significant."""
+
+_SYSTEM_BRIEF_FORMAT = """Respond with ONLY valid JSON, no markdown, no preamble:
 {
-  "objective": "One sentence stating the client's core goal or business problem.",
-  "challenges": ["2 to 4 short phrases — the key challenges or pain points driving this initiative"],
-  "capabilities_needed": ["3 to 6 short, specific capability tags, e.g. 'predictive analytics', 'process automation', 'change management', 'real-time monitoring'"],
+  "is_relevant": true,
+  "objective": "...",
+  "challenges": ["..."],
+  "capabilities_needed": ["..."],
   "context": {
-    "industry": "Client industry or sector — empty string if not mentioned",
-    "scale": "Scale or scope of the engagement — empty string if not mentioned",
-    "constraints": "Notable constraints or requirements — empty string if not mentioned"
+    "industry": "...",
+    "scale": "...",
+    "constraints": "..."
   }
 }
 
 Rules:
-- capabilities_needed tags must be 1–3 words each, specific and scannable
-- If the input is very short, infer reasonable values from what is available
+- is_relevant: false only if clearly not a business engagement (e.g. poem requests, general knowledge questions)
 - Always return valid JSON — never refuse or add explanation"""
+
+_SYSTEM_BRIEF = _SYSTEM_BRIEF_INSTRUCTIONS + "\n\n" + _SYSTEM_BRIEF_FORMAT
 
 
 def generate_brief(rfp_text):
     """Generate a structured brief from RFP text or a short problem description.
 
-    Returns {objective, challenges, capabilities_needed, context}.
+    Returns {is_relevant, objective, challenges, capabilities_needed, context}.
+    is_relevant is False when the input is clearly not a business RFP or project brief.
     Raises RuntimeError on API failure, ValueError if response is not valid JSON.
     """
     result = _call_claude(
         system=_SYSTEM_BRIEF,
         user=rfp_text[:8000],
-        max_tokens=600,
+        max_tokens=1024,
         temperature=0.2,
     )
     if result["truncated"]:

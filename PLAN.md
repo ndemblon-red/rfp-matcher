@@ -189,9 +189,11 @@ Textarea on `/match` accepts a plain-text description; submit goes directly to `
 bypassing file upload.
 
 **M3-01 — RFP brief extraction** ✅
-`generate_brief(rfp_text)` calls Claude Sonnet to return `{objective, challenges,
-capabilities_needed, context}`. Called during upload (for preview) and during keyword-only
-analysis. Handles truncated responses via `_safe_parse_json` with JSON repair.
+`generate_brief(rfp_text)` calls Claude Sonnet to return `{is_relevant, objective, challenges,
+capabilities_needed, context}`. `is_relevant` is false when the input is clearly not a business
+RFP or project brief; `/match/analyze` checks this before scoring and redirects early with a
+flash message. Called during upload (for preview) and during keyword-only analysis. Handles
+truncated responses via `_safe_parse_json` with JSON repair.
 
 **M3-02 + M3-03 — Scoring and results** ✅
 `match_case_studies(rfp_text, case_studies, brief_capabilities, brief)` uses a two-step pipeline:
@@ -210,7 +212,8 @@ Runs automatically after each sync; also available manually via `/sync/embed` PO
 Stored as float32 BLOB in `case_studies.embedding`; model name in `embedding_model`.
 
 **`/match/analyze` POST** ✅ — reads from session (file upload path) or keyword input,
-runs `generate_brief` + `match_case_studies`, stores results in session.
+runs `generate_brief` + checks `is_relevant` flag (redirects with flash if false) +
+`match_case_studies`, stores results in session.
 
 **`/match/results` GET** ✅ — renders stored results; redirects to `/match` if no session data.
 
@@ -247,6 +250,31 @@ already shown.
 - `app.py` is currently 308 lines / 10 routes. Still within budget; reassess after Slice 6.
 - The original plan named this function `extract_requirements`; it was implemented as
   `generate_brief` with a richer output schema.
+
+---
+
+## Evals
+Priority: P1 (ongoing)
+**Status: COMPLETE**
+
+### What it delivers
+`evals/run_evals.py` — a standalone eval script covering three categories across 10 assertions.
+Run with `python evals/run_evals.py` after populating `evals/fixtures/` with the two RFP files.
+
+### Categories
+| # | Category | Method | PASS condition |
+|---|----------|--------|----------------|
+| 1 | Off-topic guard (×5) | No AI judge | `match_case_studies` returns 0 results > 25 for nonsense input |
+| 2 | Brief quality (×2) | AI-as-judge (Sonnet) | Judge scores brief ≥ 3/5 |
+| 3 | Match quality: E.ON results | Score threshold | ≥ 2 results score > 50 |
+| 3 | Match quality: Nkom no match | Score threshold | 0 results score > 40 |
+| 3 | Match quality: E.ON top match | AI-as-judge (Sonnet) | Judge answers "yes" |
+
+### Notes
+- Fixture files (`evals/fixtures/*.pdf` / `*.txt`) are gitignored — drop either format
+- Token tracking monkey-patches `analysis._call_claude`; cost estimate printed at end
+- Script exits 0 if all pass, 1 if any fail (CI-friendly)
+- Skips gracefully when DB is empty or fixtures are missing
 
 ---
 
