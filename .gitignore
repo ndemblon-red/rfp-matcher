@@ -1,4 +1,5 @@
 .env
+.skills/
 temp_casestudies.pptx
 rfp_matcher.db
 rfp_matcher_test.db
