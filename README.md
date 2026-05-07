@@ -77,7 +77,7 @@ SharePoint (live PPTX)
 
 **Built on a predefined fullstack skill.** The architecture, stack, folder structure, and build methodology follow a company-standard fullstack skill — a reusable blueprint covering Flask patterns, database conventions, security requirements, logging, and a slice-based delivery methodology. This ensured consistency with other internal tools, avoided common pitfalls, and accelerated development significantly.
 
-**Embeddings prevent false positives.** The matching engine uses OpenAI `text-embedding-3-small` to pre-filter candidates by semantic similarity before Claude scores them. This is the critical design decision — keyword-based pre-filtering was tried first and produced confident-sounding but wrong results (a Norwegian telecom regulatory tender scored 75% against an IT cost review because both mentioned "cost modelling"). Embeddings correctly place these far apart in vector space, so Claude never sees them as candidates.
+**Embeddings prevent false positives.** The matching engine uses OpenAI `text-embedding-3-small` to pre-filter candidates by semantic similarity before Claude scores them. This is the critical design decision — keyword-based pre-filtering was tried first and produced confident-sounding but wrong results (a highly specialised regulatory tender scored 75% against an IT cost review because both mentioned "cost modelling"). Embeddings correctly place these far apart in vector space, so Claude never sees them as candidates.
 
 **No LLM calls during sync.** Industry and engagement type are inferred using a local keyword lookup table — the industry label is already in the slide heading (e.g. `COMMODITY PRICE FORECASTING (PETROCHEMICAL)`). Claude Haiku is used as a fallback only for slides the keyword lookup can't categorise, and results are cached permanently. This makes sync free, fast, and reliable.
 
@@ -105,7 +105,8 @@ rfp-matcher/
 ├── notes/              # Build retrospective and session notes
 ├── templates/          # Jinja2 HTML templates
 ├── static/             # CSS, JS, icons
-├── tests/              # pytest test suite (129 tests)
+├── evals/              # Eval suite (off-topic guard, brief quality, match quality)
+├── tests/              # pytest test suite
 └── .env.example        # Environment variable template
 ```
 
