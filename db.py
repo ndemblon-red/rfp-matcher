@@ -337,7 +337,7 @@ def get_case_studies_for_scoring():
     try:
         cur = conn.cursor()
         cur.execute("""
-            SELECT id, title, industry_full, engagement_type, has_video, slide_content, embedding
+            SELECT id, title, slide_num, industry_full, engagement_type, has_video, slide_content, embedding
             FROM case_studies
             ORDER BY slide_num, title
         """)

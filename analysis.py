@@ -447,6 +447,7 @@ def match_case_studies(rfp_text, case_studies, brief_capabilities=None, brief=No
         results.append({
             "id": item["id"],
             "title": cs.get("title", ""),
+            "slide_num": cs.get("slide_num"),
             "industry_full": cs.get("industry_full"),
             "engagement_type": cs.get("engagement_type"),
             "has_video": cs.get("has_video", 0),

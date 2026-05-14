@@ -4,11 +4,19 @@
 {% block extra_style %}
 .score-badge {
     display: inline-block;
-    padding: 2px 8px;
-    border-radius: 4px;
-    font-size: 10px;
+    padding: 4px 14px;
+    border-radius: 6px;
+    font-size: 15px;
     font-weight: 700;
     letter-spacing: 0.04em;
+    min-width: 48px;
+    text-align: center;
+}
+.slide-label {
+    font-size: 11px;
+    color: var(--text-dim);
+    font-weight: 500;
+    margin-top: 3px;
 }
 .score-high  { background: var(--green-soft);  color: var(--green); }
 .score-mid   { background: var(--amber-soft);  color: var(--amber); }
@@ -88,7 +96,10 @@
                    style="color:var(--text)">{{ result.title }}</a>
             </div>
         </div>
-        <div style="flex-shrink:0">
+        <div style="flex-shrink:0;display:flex;align-items:center;gap:8px">
+            {% if result.slide_num %}
+            <div class="slide-label">Please go to Slide {{ result.slide_num }}</div>
+            {% endif %}
             {% if result.score >= 70 %}
             <span class="score-badge score-high">{{ result.score }}</span>
             {% elif result.score >= 40 %}
